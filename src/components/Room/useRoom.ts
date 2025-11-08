@@ -716,8 +716,8 @@ export function useRoom(
 
       // 如果我是管理员
       if (isRoomCreator && authorityPackage) {
-        // 检查是不是自己的包
-        if (receivedPackage.creatorId === authorityPackage.creatorId) {
+        // 检查是不是自己的包（比较 creatorId 和 userId）
+        if (receivedPackage.creatorId === authorityPackage.creatorId || receivedPackage.creatorId === userId) {
           // 是自己的包，检查版本号，只接受更新的
           if (receivedPackage.version > authorityPackage.version) {
             console.log('[AuthorityPackage] 接收自己的更新包')
