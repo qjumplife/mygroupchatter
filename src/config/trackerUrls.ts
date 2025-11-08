@@ -1,21 +1,6 @@
-// WebTorrent tracker 列表（必须是 wss:// 协议）
-let trackerUrls: string[] | undefined = [
-  // 国内可访问的 tracker
-  'wss://tracker.sloppyta.co:443/announce',
-  'wss://tracker.novage.com.ua:443/announce',
-  'wss://tracker.ghostchu-services.top:443/announce',
-
-  // 备用 tracker
-  'wss://tracker.openwebtorrent.com:443/announce',
-  'wss://tracker.webtorrent.dev:443/announce',
-  'wss://tracker.files.fm:7073/announce',
-  'wss://tracker.btorrent.xyz:443/announce',
-  'wss://tracker.openwebtorrent.com',
-  'wss://tracker.btorrent.xyz',
-  'wss://qot.abir.top:443/announce',
-  'wss://spacetradersapi-chatbox.herokuapp.com:443/announce'
-  
-]
+// 使用 undefined 让 Trystero 使用 nostr 策略（不需要 tracker，适合国内网络）
+// nostr 通过中继服务器建立 P2P 连接，更稳定且不被墙
+let trackerUrls: string[] | undefined = undefined
 
 // If a tracker URL has been provided via the VITE_TRACKER_URL environment
 // variable, prioritize using it. This is mainly relevant for local development
