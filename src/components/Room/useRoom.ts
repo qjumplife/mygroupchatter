@@ -831,6 +831,12 @@ export function useRoom(
 
           await Promise.all(promises)
 
+          // 私有房间：如果我是管理员，立即广播 AuthorityPackage
+          if (isPrivate && isRoomCreator && authorityPackage) {
+            console.log('[onPeerJoin] 我是管理员，广播 AuthorityPackage')
+            sendAuthorityPackage(authorityPackage)
+          }
+
           // 私有房间：新用户需要验证
           if (isPrivate && !isRoomCreator && !contentKey) {
             const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
