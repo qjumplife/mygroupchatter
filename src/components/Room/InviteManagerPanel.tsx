@@ -303,7 +303,24 @@ export const InviteManagerPanel = () => {
                     <div style={{ fontSize: '9px', color: '#666' }}>
                       <div>创建: {new Date(key.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                       <div>过期: {new Date(key.expiration).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-                      {key.usedBy && <div>使用者: {key.usedBy}</div>}
+                      {key.usedBy && (
+                        <div 
+                          title={key.usedBy}
+                          style={{ 
+                            cursor: 'pointer',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigator.clipboard.writeText(key.usedBy!)
+                            alert('User ID 已复制')
+                          }}
+                        >
+                          使用者: {key.usedBy.substring(0, 8)}...{key.usedBy.substring(key.usedBy.length - 4)}
+                        </div>
+                      )}
                       {(() => {
                         const history = getHistoryForKey(key.hash)
                         return history ? (
