@@ -1217,16 +1217,18 @@ export function useRoom(
         if (authorityPackage && authorityPackage.keyset !== undefined) {
           myClaimRef.current = null
           setMyCreatorClaim(null)
-          // 关键修复：删除错误保存的 creator 信息
+          // 关键修复：删除错误保存的所有数据
           localStorage.removeItem(`chitchatter_creator_${roomId}`)
+          localStorage.removeItem(`chitchatter_authority_${roomId}`)
           showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
           return
         }
 
         // 如果被其他声明击败
         if (!myClaimRef.current) {
-          // 关键修复：删除错误保存的 creator 信息
+          // 关键修复：删除错误保存的所有数据
           localStorage.removeItem(`chitchatter_creator_${roomId}`)
+          localStorage.removeItem(`chitchatter_authority_${roomId}`)
           showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
           return
         }
