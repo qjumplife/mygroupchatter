@@ -18,7 +18,9 @@ export interface InviteKeyRecord {
 
 export interface AuthorityPackage {
   version: number                    // 单调递增版本号
-  timestamp: string                  // UTC ISO 8601
+  timestamp: string                  // 最后更新时间 UTC ISO 8601
+  createdAt: string                  // 包创建时间 UTC ISO 8601（管理员成为管理员的时间）
+  creatorId: string                  // 管理员的 userId
   keyset: InviteKeyRecord[]         // 密钥记录数组
   signature: string                  // Ed25519 签名（Base64）
 }

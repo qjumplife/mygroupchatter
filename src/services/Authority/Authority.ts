@@ -29,9 +29,12 @@ export const createRoomAuthority = async (
   const contentKey = await generateContentKey()
 
   // 3. 初始化空的 L
+  const now = new Date().toISOString()
   const L = {
     version: 1,
-    timestamp: new Date().toISOString(),
+    timestamp: now,
+    createdAt: now,
+    creatorId: userId,
     keyset: [],
   }
 

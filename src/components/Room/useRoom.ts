@@ -704,9 +704,49 @@ export function useRoom(
         peerId
       })
 
-      // 如果我是管理员，忽略所有收到的 AuthorityPackage（管理员不会被降级）
-      if (isRoomCreator) {
-        console.log('[AuthorityPackage] 我是管理员，忽略收到的包')
+      // 如果我是管理员
+      if (isRoomCreator && authorityPackage) {
+        // 检查是不是自己的包
+        if (receivedPackage.creatorId === authorityPackage.creatorId) {
+          // 是自己的包，检查版本号，只接受更新的
+          if (receivedPackage.version > authorityPackage.version) {
+            console.log('[AuthorityPackage] 接收自己的更新包')
+            setAuthorityPackage(receivedPackage)
+            if (password) {
+              const { encryptWithPassword } = await import('services/Encryption')
+              const encrypted = await encryptWithPassword(
+                JSON.stringify(receivedPackage),
+                password,
+                `authority-${roomId}`
+              )
+              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
+            }
+          }
+          return
+        }
+        
+        // 不是自己的包，比较 createdAt
+        const myCreatedTime = new Date(authorityPackage.createdAt || authorityPackage.timestamp).getTime()
+        const receivedCreatedTime = new Date(receivedPackage.createdAt || receivedPackage.timestamp).getTime()
+        
+        if (receivedCreatedTime < myCreatedTime) {
+          console.log('[降级] 对方更早，主动降级')
+          setIsRoomCreator(false)
+          setCreatorPrivateKey(null)
+          setContentKey(null)
+          myClaimRef.current = null
+          setMyCreatorClaim(null)
+          localStorage.removeItem(`chitchatter_creator_${roomId}`)
+          localStorage.removeItem(`chitchatter_authority_${roomId}`)
+          sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+          showAlert('检测到更早的管理员，退出房间', { severity: 'error' })
+          setTimeout(() => {
+            peerRoom.leaveRoom()
+            window.location.href = window.location.pathname
+          }, 1500)
+          return
+        }
+        console.log('[AuthorityPackage] 我更早，丢弃对方的包')
         return
       }
 
@@ -1034,12 +1074,22 @@ export function useRoom(
                 authorityPkg = JSON.parse(storedAuthority)
               }
             } else {
+              const now = new Date().toISOString()
               authorityPkg = {
                 version: 1,
-                timestamp: new Date().toISOString(),
+                timestamp: now,
+                createdAt: now,
+                creatorId: userId,
                 keyset: [],
                 signature: '',
               }
+            }
+            // 确保旧数据有 createdAt 和 creatorId
+            if (!authorityPkg.createdAt) {
+              authorityPkg.createdAt = authorityPkg.timestamp
+            }
+            if (!authorityPkg.creatorId) {
+              authorityPkg.creatorId = userId
             }
             setAuthorityPackage(authorityPkg)
             sendAuthorityPackage(authorityPkg)
@@ -1052,7 +1102,7 @@ export function useRoom(
         const verifiedContentKey = await loadVerifiedUser(roomId, userId)
         if (verifiedContentKey) {
           setContentKey(verifiedContentKey)
-          // 恢复 authorityPackage（普通成员只保存，不广播）
+          // 恢复 authorityPackage，普通成员也要广播
           const storedAuthority = localStorage.getItem(`chitchatter_authority_${roomId}`)
           if (storedAuthority && password) {
             try {
@@ -1060,9 +1110,11 @@ export function useRoom(
               const decrypted = await decryptWithPassword(storedAuthority, password, `authority-${roomId}`)
               const authorityPkg = JSON.parse(decrypted)
               setAuthorityPackage(authorityPkg)
+              sendAuthorityPackage(authorityPkg)
             } catch {
               const authorityPkg = JSON.parse(storedAuthority)
               setAuthorityPackage(authorityPkg)
+              sendAuthorityPackage(authorityPkg)
             }
           }
           showAlert('欢迎回来！已自动登录', { severity: 'success' })
