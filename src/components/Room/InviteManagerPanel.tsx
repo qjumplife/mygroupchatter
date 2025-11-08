@@ -282,7 +282,7 @@ export const InviteManagerPanel = () => {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ marginBottom: '3px' }}>
+                    <div style={{ marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span
                         style={{
                           display: 'inline-block',
@@ -291,7 +291,6 @@ export const InviteManagerPanel = () => {
                           color: 'white',
                           borderRadius: '2px',
                           fontSize: '10px',
-                          marginRight: '6px',
                         }}
                       >
                         {statusLabels[key.status]}
@@ -299,18 +298,14 @@ export const InviteManagerPanel = () => {
                       <span style={{ fontSize: '10px', color: '#666' }}>
                         #{keys.length - index}
                       </span>
-                    </div>
-                    <div style={{ fontSize: '9px', color: '#666' }}>
-                      <div>创建: {new Date(key.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-                      <div>过期: {new Date(key.expiration).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                       {key.usedBy && (
-                        <div 
+                        <span 
                           title={key.usedBy}
                           style={{ 
+                            fontSize: '9px',
+                            color: '#2196f3',
                             cursor: 'pointer',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
+                            fontFamily: 'monospace'
                           }}
                           onClick={(e) => {
                             e.stopPropagation()
@@ -318,9 +313,13 @@ export const InviteManagerPanel = () => {
                             alert('User ID 已复制')
                           }}
                         >
-                          使用者: {key.usedBy.substring(0, 8)}...{key.usedBy.substring(key.usedBy.length - 4)}
-                        </div>
+                          {key.usedBy.substring(0, 8)}...{key.usedBy.substring(key.usedBy.length - 4)}
+                        </span>
                       )}
+                    </div>
+                    <div style={{ fontSize: '9px', color: '#666' }}>
+                      <div>创建: {new Date(key.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                      <div>过期: {new Date(key.expiration).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                       {(() => {
                         const history = getHistoryForKey(key.hash)
                         return history ? (
