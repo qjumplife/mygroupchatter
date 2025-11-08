@@ -764,10 +764,15 @@ export function useRoom(
       }
 
       if (authorityPackage) {
-        if (receivedPackage.version <= authorityPackage.version) return
-        const currentTime = new Date(authorityPackage.timestamp).getTime()
-        const receivedTime = new Date(receivedPackage.timestamp).getTime()
-        if (receivedTime <= currentTime) return
+        // 如果是同一个管理员的包，检查版本号
+        if (receivedPackage.creatorId === authorityPackage.creatorId) {
+          if (receivedPackage.version <= authorityPackage.version) return
+        } else {
+          // 不同管理员，比较 createdAt，只接受更早的
+          const myCreatedTime = new Date(authorityPackage.createdAt || authorityPackage.timestamp).getTime()
+          const receivedCreatedTime = new Date(receivedPackage.createdAt || receivedPackage.timestamp).getTime()
+          if (receivedCreatedTime >= myCreatedTime) return
+        }
       }
 
       setAuthorityPackage(receivedPackage)
