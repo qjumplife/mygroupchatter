@@ -32,6 +32,9 @@ export const InviteManagerPanel = () => {
   const [generatedKey, setGeneratedKey] = useState<InviteKeyWithPlaintext | null>(null)
   const [showKey, setShowKey] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [saveHistory, setSaveHistory] = useState(() => {
+    return localStorage.getItem('chitchatter_save_invite_history') === 'true'
+  })
 
   const getTtlHours = () => {
     switch (ttlUnit) {
@@ -51,6 +54,11 @@ export const InviteManagerPanel = () => {
     if (key) {
       setGeneratedKey(key)
       setShowKey(true)
+      if (saveHistory && key.plaintext) {
+        const saved = JSON.parse(localStorage.getItem('chitchatter_invite_history') || '[]')
+        saved.push({ hash: key.hash, plaintext: key.plaintext, createdAt: key.createdAt })
+        localStorage.setItem('chitchatter_invite_history', JSON.stringify(saved))
+      }
     }
   }
 
@@ -69,11 +77,23 @@ export const InviteManagerPanel = () => {
     }
   }
 
-  const handleCopyKey = () => {
-    if (generatedKey?.plaintext) {
-      navigator.clipboard.writeText(generatedKey.plaintext)
+  const handleCopyKey = (plaintext?: string) => {
+    const text = plaintext || generatedKey?.plaintext
+    if (text) {
+      navigator.clipboard.writeText(text)
       alert('密钥已复制到剪贴板')
     }
+  }
+
+  const toggleSaveHistory = () => {
+    const newValue = !saveHistory
+    setSaveHistory(newValue)
+    localStorage.setItem('chitchatter_save_invite_history', String(newValue))
+  }
+
+  const getHistoryForKey = (hash: string) => {
+    const saved = JSON.parse(localStorage.getItem('chitchatter_invite_history') || '[]')
+    return saved.find((item: any) => item.hash === hash)
   }
 
   const activeCount = keys.filter(k => k.status === 'ACTIVE').length
@@ -119,7 +139,18 @@ export const InviteManagerPanel = () => {
 
       {/* 生成密钥 */}
       <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: 'rgba(240, 240, 240, 0.8)', borderRadius: '4px' }}>
-        <h4 style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#333' }}>生成新密钥</h4>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+          <h4 style={{ margin: '0', fontSize: '12px', color: '#333' }}>生成新密钥</h4>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#666', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={saveHistory}
+              onChange={toggleSaveHistory}
+              style={{ cursor: 'pointer' }}
+            />
+            保存历史
+          </label>
+        </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', fontSize: '11px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#333' }}>
             有效期:
@@ -273,9 +304,36 @@ export const InviteManagerPanel = () => {
                       <div>创建: {new Date(key.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                       <div>过期: {new Date(key.expiration).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                       {key.usedBy && <div>使用者: {key.usedBy}</div>}
+                      {(() => {
+                        const history = getHistoryForKey(key.hash)
+                        return history ? (
+                          <div style={{ marginTop: '3px', padding: '3px', backgroundColor: 'rgba(255, 243, 205, 0.5)', borderRadius: '2px' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: '9px' }}>{history.plaintext}</span>
+                          </div>
+                        ) : null
+                      })()}
                     </div>
                   </div>
-                  <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {(() => {
+                      const history = getHistoryForKey(key.hash)
+                      return history ? (
+                        <button
+                          onClick={() => handleCopyKey(history.plaintext)}
+                          style={{
+                            padding: '3px 8px',
+                            backgroundColor: '#4caf50',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            fontSize: '10px',
+                          }}
+                        >
+                          复制
+                        </button>
+                      ) : null
+                    })()}
                     {(key.status === 'ACTIVE' || key.status === 'USED') && (
                       <button
                         onClick={() => handleRevoke(key.hash)}
