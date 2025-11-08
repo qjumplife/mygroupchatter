@@ -222,6 +222,45 @@ export const Settings = ({ userId }: SettingsProps) => {
           mb: 2,
         }}
       >
+        Profile
+      </Typography>
+      <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Your User ID
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary' }}>
+          This is your unique identifier in chat rooms. Click to copy.
+        </Typography>
+        <Typography
+          sx={{
+            fontFamily: 'monospace',
+            fontSize: '0.875rem',
+            wordBreak: 'break-all',
+            cursor: 'pointer',
+            p: 1.5,
+            bgcolor: 'action.hover',
+            borderRadius: 1,
+            '&:hover': {
+              bgcolor: 'action.selected',
+            },
+          }}
+          onClick={() => {
+            navigator.clipboard.writeText(userId)
+            showAlert('User ID copied to clipboard', { severity: 'success' })
+          }}
+        >
+          {userId}
+        </Typography>
+      </Paper>
+      <Divider sx={{ my: 2 }} />
+      <Typography
+        variant="h2"
+        sx={{
+          fontSize: theme.typography.h3.fontSize,
+          fontWeight: theme.typography.fontWeightMedium,
+          mb: 2,
+        }}
+      >
         Data
       </Typography>
       <Typography

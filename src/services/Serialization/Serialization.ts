@@ -94,6 +94,7 @@ export interface JoinRequestMessage {
   type: 'JOIN_REQUEST'
   hashKi: string
   peerId: string
+  userId: string
 }
 
 /**

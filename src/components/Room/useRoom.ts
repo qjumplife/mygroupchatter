@@ -593,8 +593,8 @@ export function useRoom(
 
       // 只有管理员才更新 authorityPackage
       if (canUpdatePackage) {
-        console.log('[JOIN_REQUEST] 管理员更新 AuthorityPackage')
-        const updatedL = markKeyAsUsed(authorityPackage, request.hashKi, request.peerId)
+        console.log('[JOIN_REQUEST] 管理员更新 AuthorityPackage，使用者 userId:', request.userId)
+        const updatedL = markKeyAsUsed(authorityPackage, request.hashKi, request.userId)
         const signature = await signAuthorityPackage(updatedL, creatorPrivateKey!)
         const newAuthorityPackage = { ...updatedL, signature }
         setAuthorityPackage(newAuthorityPackage)
@@ -880,24 +880,26 @@ export function useRoom(
               if (inviteKey) {
                 sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
                 const hashKi = await sha256(inviteKey)
-                console.log('[onPeerJoin] 发送验证请求:', { hashKi, peerId: userId })
+                console.log('[onPeerJoin] 发送验证请求:', { hashKi, userId })
                 await sendJoinRequest(
                   {
                     type: 'JOIN_REQUEST',
                     hashKi,
                     peerId: userId,
+                    userId,
                   },
                   peerId
                 )
               }
             } else {
               const hashKi = await sha256(storedInviteKey)
-              console.log('[onPeerJoin] 使用已存储的邀请码发送验证请求:', { hashKi, peerId: userId })
+              console.log('[onPeerJoin] 使用已存储的邀请码发送验证请求:', { hashKi, userId })
               await sendJoinRequest(
                 {
                   type: 'JOIN_REQUEST',
                   hashKi,
                   peerId: userId,
+                  userId,
                 },
                 peerId
               )

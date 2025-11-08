@@ -186,6 +186,27 @@ export const PeerListItem = ({
         <DialogContent sx={{ display: 'flex', flexDirection: 'column' }}>
           <Accordion>
             <AccordionSummary>
+              <Typography>User ID</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography
+                sx={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.875rem',
+                  wordBreak: 'break-all',
+                  cursor: 'pointer',
+                }}
+                onClick={() => {
+                  navigator.clipboard.writeText(peer.userId)
+                  alert('User ID copied to clipboard')
+                }}
+              >
+                {peer.userId}
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+          <Accordion>
+            <AccordionSummary>
               <Typography>Their public key</Typography>
             </AccordionSummary>
             <AccordionDetails>
