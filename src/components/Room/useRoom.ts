@@ -727,6 +727,12 @@ export function useRoom(
 
       // 如果我是管理员
       if (isRoomCreator && authorityPackage) {
+        console.log('[AuthorityPackage] 管理员处理逻辑:', {
+          myUserId: userId,
+          myCreatorId: authorityPackage.creatorId,
+          receivedCreatorId: receivedPackage.creatorId
+        })
+        
         // 首先检查：如果收到的包的 creatorId 就是当前 userId，说明是自己的包
         if (receivedPackage.creatorId === userId) {
           // 是自己的包，检查版本号，只接受更新的
