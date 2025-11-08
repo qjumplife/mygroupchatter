@@ -1,8 +1,9 @@
 let trackerUrls: string[] | undefined = [
-  // 添加一些可用的公共 tracker
   'wss://tracker.openwebtorrent.com',
   'wss://tracker.webtorrent.dev',
   'wss://tracker.files.fm:7073/announce',
+  'wss://tracker.btorrent.xyz',
+  'wss://tracker.fastcast.nz',
 ]
 
 // If a tracker URL has been provided via the VITE_TRACKER_URL environment
