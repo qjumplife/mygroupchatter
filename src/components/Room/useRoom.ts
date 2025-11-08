@@ -43,6 +43,7 @@ import { verifyInviteKey, markKeyAsUsed, decryptContentKeyWithKi } from 'service
 import { signAuthorityPackage, sha256 } from 'services/Encryption'
 import { AuthorityPackage, CreatorClaim } from 'models/authority'
 import { JoinRequestMessage, JoinResponseMessage } from 'services/Serialization'
+import { assertAuthorityPackage, assertCreatorClaim, assertJoinRequest, assertJoinResponse } from 'utils/authorityValidation'
 
 import { messageTranscriptSizeLimit } from 'config/messaging'
 
@@ -222,6 +223,7 @@ export function useRoom(
       creatorPrivateKey,
       setCreatorPrivateKey,
       broadcastAuthorityPackage: (pkg: AuthorityPackage) => {
+        assertAuthorityPackage(pkg, 'broadcastAuthorityPackage')
         console.log('[broadcastAuthorityPackage] 广播 AuthorityPackage:', {
           version: pkg.version,
           timestamp: pkg.timestamp,
@@ -574,6 +576,7 @@ export function useRoom(
     peerAction: PeerAction.JOIN_REQUEST,
     peerRoom,
     onReceive: async (request, peerId) => {
+      assertJoinRequest(request, 'JOIN_REQUEST 收到')
       console.log('[JOIN_REQUEST] 收到验证请求:', { request, peerId, isRoomCreator, hasAuthorityPackage: !!authorityPackage })
       
       // 只要有 authorityPackage 就可以验证，不仅限于管理员
@@ -610,10 +613,37 @@ export function useRoom(
       if (canUpdatePackage) {
         console.log('[JOIN_REQUEST] 管理员更新 AuthorityPackage，使用者 userId:', request.userId)
         const updatedL = markKeyAsUsed(authorityPackage, request.hashKi, request.userId)
+        // 确保必要字段存在
+        if (!updatedL.roomId) updatedL.roomId = roomId
+        if (!updatedL.creatorId) updatedL.creatorId = userId
+        if (!updatedL.createdAt) updatedL.createdAt = updatedL.timestamp
+        console.log('[JOIN_REQUEST] markKeyAsUsed 返回:', {
+          roomId: updatedL.roomId,
+          creatorId: updatedL.creatorId,
+          createdAt: updatedL.createdAt,
+          version: updatedL.version
+        })
         const signature = await signAuthorityPackage(updatedL, creatorPrivateKey!)
         const newAuthorityPackage = { ...updatedL, signature }
+        console.log('[JOIN_REQUEST] 新的 AuthorityPackage:', {
+          roomId: newAuthorityPackage.roomId,
+          creatorId: newAuthorityPackage.creatorId,
+          createdAt: newAuthorityPackage.createdAt,
+          version: newAuthorityPackage.version
+        })
+        assertAuthorityPackage(newAuthorityPackage, 'JOIN_REQUEST 更新')
         setAuthorityPackage(newAuthorityPackage)
         sendAuthorityPackage(newAuthorityPackage)
+        // 保存更新后的包
+        if (password) {
+          const { encryptWithPassword } = await import('services/Encryption')
+          const encrypted = await encryptWithPassword(
+            JSON.stringify(newAuthorityPackage),
+            password,
+            `authority-${roomId}`
+          )
+          localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
+        }
       } else {
         console.log('[JOIN_REQUEST] 非管理员，不更新 AuthorityPackage')
       }
@@ -636,6 +666,7 @@ export function useRoom(
     peerAction: PeerAction.JOIN_RESPONSE,
     peerRoom,
     onReceive: async (response, peerId) => {
+      assertJoinResponse(response, 'JOIN_RESPONSE 收到')
       console.log('[JOIN_RESPONSE] 收到验证响应:', { response, peerId })
       if (response.result === 'DENY') {
         console.log('[JOIN_RESPONSE] 验证被拒绝:', response.reason)
@@ -740,8 +771,12 @@ export function useRoom(
           receivedCreatorId: receivedPackage.creatorId
         })
         
-        // 首先检查：如果收到的包的 creatorId 就是当前 userId，说明是自己的包
-        if (receivedPackage.creatorId === userId) {
+        // 检查是不是同一个 creatorId 的包
+        if (receivedPackage.creatorId === authorityPackage.creatorId) {
+          console.log('[AuthorityPackage] 是自己的包，检查版本', {
+            receivedVersion: receivedPackage.version,
+            myVersion: authorityPackage.version
+          })
           // 是自己的包，检查版本号，只接受更新的
           if (receivedPackage.version > authorityPackage.version) {
             console.log('[AuthorityPackage] 接收自己的更新包')
@@ -755,37 +790,35 @@ export function useRoom(
               )
               localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
             }
+          } else {
+            console.log('[AuthorityPackage] 版本不更新，忽略')
           }
           return
         }
         
-        // 检查是不是同一个 creatorId 的包
-        if (receivedPackage.creatorId === authorityPackage.creatorId) {
-          // 是自己的包，检查版本号，只接受更新的
-          if (receivedPackage.version > authorityPackage.version) {
-            console.log('[AuthorityPackage] 接收自己的更新包')
-            setAuthorityPackage(receivedPackage)
-            if (password) {
-              const { encryptWithPassword } = await import('services/Encryption')
-              const encrypted = await encryptWithPassword(
-                JSON.stringify(receivedPackage),
-                password,
-                `authority-${roomId}`
-              )
-              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
-            }
-          }
-          return
-        }
+        console.log('[AuthorityPackage] 不是自己的包，比较 createdAt')
         
         // 不是自己的包，比较 createdAt
         const myCreatedTime = new Date(authorityPackage.createdAt || authorityPackage.timestamp).getTime()
         const receivedCreatedTime = new Date(receivedPackage.createdAt || receivedPackage.timestamp).getTime()
         
-        if (receivedCreatedTime < myCreatedTime) {
-          console.log('[降级] 对方更早，主动降级', {
+        console.log('[AuthorityPackage] 时间比较:', {
+          myCreatedTime: new Date(myCreatedTime).toISOString(),
+          receivedCreatedTime: new Date(receivedCreatedTime).toISOString(),
+          receivedIsEarlier: receivedCreatedTime < myCreatedTime,
+          timeDiff: Math.abs(myCreatedTime - receivedCreatedTime)
+        })
+        
+        // 关键修复：只有时间差超过 10 秒才认为是真正的冲突
+        // 如果时间差很小（< 10秒），可能是同一个管理员的不同标签页或刷新后的重连
+        const timeDiff = Math.abs(myCreatedTime - receivedCreatedTime)
+        const isRealConflict = timeDiff > 10000 // 10 秒
+        
+        if (receivedCreatedTime < myCreatedTime && isRealConflict) {
+          console.log('[降级] 对方更早且时间差显著，主动降级', {
             myCreatedTime: new Date(myCreatedTime).toISOString(),
             receivedCreatedTime: new Date(receivedCreatedTime).toISOString(),
+            timeDiff,
             myCreatorId: authorityPackage.creatorId,
             receivedCreatorId: receivedPackage.creatorId
           })
@@ -806,7 +839,12 @@ export function useRoom(
           }, 1500)
           return
         }
-        console.log('[AuthorityPackage] 我更早，丢弃对方的包')
+        
+        if (!isRealConflict) {
+          console.log('[AuthorityPackage] 时间差太小，可能是同一管理员，忽略')
+        } else {
+          console.log('[AuthorityPackage] 我更早，丢弃对方的包')
+        }
         return
       }
 
@@ -835,6 +873,12 @@ export function useRoom(
         }
       }
 
+      console.log('[非管理员] 接收 AuthorityPackage:', {
+        roomId: receivedPackage.roomId,
+        creatorId: receivedPackage.creatorId,
+        createdAt: receivedPackage.createdAt,
+        version: receivedPackage.version
+      })
       setAuthorityPackage(receivedPackage)
       // 持久化 authorityPackage（加密）
       if (password) {
@@ -949,7 +993,13 @@ export function useRoom(
 
           // 私有房间：如果我有 AuthorityPackage，主动发送给新 peer（管理员或普通成员）
           if (isPrivate && authorityPackage) {
-            console.log('[onPeerJoin] 发送 AuthorityPackage 给新 peer')
+            assertAuthorityPackage(authorityPackage, 'onPeerJoin 发送')
+            console.log('[onPeerJoin] 发送 AuthorityPackage 给新 peer:', {
+              roomId: authorityPackage.roomId,
+              creatorId: authorityPackage.creatorId,
+              createdAt: authorityPackage.createdAt,
+              version: authorityPackage.version
+            })
             sendAuthorityPackage(authorityPackage)
             if (isRoomCreator && myClaimRef.current) {
               sendCreatorClaim(myClaimRef.current)
@@ -1128,6 +1178,7 @@ export function useRoom(
             setIsRoomCreator(true)
             
             const claim = await createCreatorClaim(1, userId, restored.publicKey, restored.privateKey)
+            assertCreatorClaim(claim, '管理员恢复创建')
             myClaimRef.current = claim
             setMyCreatorClaim(claim)
             
@@ -1194,6 +1245,14 @@ export function useRoom(
               const newSignature = await signAuthorityPackage(authorityPkg, restored.privateKey)
               authorityPkg.signature = newSignature
               console.log('[管理员恢复] 重新签名')
+              // 保存更新后的 authorityPackage
+              const { encryptWithPassword } = await import('services/Encryption')
+              const encrypted = await encryptWithPassword(
+                JSON.stringify(authorityPkg),
+                password!,
+                `authority-${roomId}`
+              )
+              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
             }
             
             console.log('[管理员恢复] 最终的authority:', {
@@ -1202,6 +1261,7 @@ export function useRoom(
               creatorId: authorityPkg.creatorId,
               createdAt: authorityPkg.createdAt
             })
+            console.log('[管理员恢复] 完整的 authorityPkg:', authorityPkg)
             setAuthorityPackage(authorityPkg)
             sendAuthorityPackage(authorityPkg)
             sendCreatorClaim(claim)
@@ -1222,11 +1282,17 @@ export function useRoom(
             try {
               const { decryptWithPassword } = await import('services/Encryption')
               const decrypted = await decryptWithPassword(storedAuthority, password, `authority-${roomId}`)
-              const authorityPkg = JSON.parse(decrypted)
+              let authorityPkg = JSON.parse(decrypted)
+              // 确保必要字段存在
+              if (!authorityPkg.roomId) authorityPkg.roomId = roomId
+              if (!authorityPkg.createdAt) authorityPkg.createdAt = authorityPkg.timestamp
               setAuthorityPackage(authorityPkg)
               sendAuthorityPackage(authorityPkg)
             } catch {
-              const authorityPkg = JSON.parse(storedAuthority)
+              let authorityPkg = JSON.parse(storedAuthority)
+              // 确保必要字段存在
+              if (!authorityPkg.roomId) authorityPkg.roomId = roomId
+              if (!authorityPkg.createdAt) authorityPkg.createdAt = authorityPkg.timestamp
               setAuthorityPackage(authorityPkg)
               sendAuthorityPackage(authorityPkg)
             }
@@ -1259,6 +1325,7 @@ export function useRoom(
 
       // 无本地信息，等待 5 秒接收 AuthorityPackage
       const authority = await createRoomAuthority(roomId, password!, userId)
+      assertCreatorClaim(authority.claim, '5秒竞争创建')
       myClaimRef.current = authority.claim
       setMyCreatorClaim(authority.claim)
       sendCreatorClaim(authority.claim)

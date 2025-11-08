@@ -343,8 +343,11 @@ export const signAuthorityPackage = async (
   privateKey: CryptoKey
 ): Promise<string> => {
   const data = JSON.stringify({
+    roomId: L.roomId,
     version: L.version,
     timestamp: L.timestamp,
+    createdAt: L.createdAt,
+    creatorId: L.creatorId,
     keyset: L.keyset,
   })
   
@@ -362,8 +365,11 @@ export const verifyAuthorityPackage = async (
   publicKey: CryptoKey
 ): Promise<boolean> => {
   const data = JSON.stringify({
+    roomId: L.roomId,
     version: L.version,
     timestamp: L.timestamp,
+    createdAt: L.createdAt,
+    creatorId: L.creatorId,
     keyset: L.keyset,
   })
   

@@ -7,6 +7,7 @@ import {
   encryptContentKey,
   signAuthorityPackage,
 } from 'services/Encryption'
+import { assertAuthorityPackage, assertInviteKeyRecord } from 'utils/authorityValidation'
 
 export interface InviteKeyWithPlaintext extends InviteKeyRecord {
   plaintext?: string // 仅在生成时显示一次
@@ -62,11 +63,15 @@ export const useInvitationKeys = () => {
           createdAt: new Date().toISOString(),
           encryptedContentKey,
         }
+        assertInviteKeyRecord(newRecord, 'generateKey 创建')
 
         // 5. 更新 L
         const newL = {
+          roomId: authorityPackage.roomId,
           version: authorityPackage.version + 1,
           timestamp: new Date().toISOString(),
+          createdAt: authorityPackage.createdAt,
+          creatorId: authorityPackage.creatorId,
           keyset: [...authorityPackage.keyset, newRecord],
         }
 
@@ -79,6 +84,7 @@ export const useInvitationKeys = () => {
         }
 
         // 7. 更新状态并广播
+        assertAuthorityPackage(newAuthorityPackage, 'generateKey')
         setAuthorityPackage(newAuthorityPackage)
         // 持久化到 localStorage（加密）
         const roomId = window.location.pathname.split('/').pop() || ''
@@ -143,8 +149,11 @@ export const useInvitationKeys = () => {
 
         // 2. 更新 L
         const newL = {
+          roomId: authorityPackage.roomId,
           version: authorityPackage.version + 1,
           timestamp: new Date().toISOString(),
+          createdAt: authorityPackage.createdAt,
+          creatorId: authorityPackage.creatorId,
           keyset: newKeyset,
         }
 
@@ -157,6 +166,7 @@ export const useInvitationKeys = () => {
         }
 
         // 4. 更新状态并广播
+        assertAuthorityPackage(newAuthorityPackage, 'revokeKey')
         setAuthorityPackage(newAuthorityPackage)
         // 持久化到 localStorage（加密）
         const roomId = window.location.pathname.split('/').pop() || ''
@@ -217,8 +227,11 @@ export const useInvitationKeys = () => {
       if (count === 0) return 0
 
       const newL = {
+        roomId: authorityPackage.roomId,
         version: authorityPackage.version + 1,
         timestamp: new Date().toISOString(),
+        createdAt: authorityPackage.createdAt,
+        creatorId: authorityPackage.creatorId,
         keyset: newKeyset,
       }
 
@@ -229,6 +242,7 @@ export const useInvitationKeys = () => {
         signature,
       }
       
+      assertAuthorityPackage(newAuthorityPackage, 'cleanupExpiredKeys')
       setAuthorityPackage(newAuthorityPackage)
       // 持久化到 localStorage（加密）
       const roomId = window.location.pathname.split('/').pop() || ''

@@ -55,10 +55,13 @@ export const markKeyAsUsed = (
   )
 
   return {
-    ...L,
+    roomId: L.roomId,
     version: L.version + 1,
     timestamp: new Date().toISOString(),
+    createdAt: L.createdAt,
+    creatorId: L.creatorId,
     keyset: newKeyset,
+    signature: L.signature,
   }
 }
 
