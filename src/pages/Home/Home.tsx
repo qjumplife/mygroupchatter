@@ -30,6 +30,7 @@ import { isEnhancedConnectivityAvailable } from '../../config/enhancedConnectivi
 import { useHome } from './useHome'
 import { EmbedCodeDialog } from './EmbedCodeDialog'
 import { CommunityRoomSelector } from './CommunityRoomSelector'
+import { RoomHistoryList } from 'components/RoomHistoryList'
 
 const StyledLogo = styled(Logo)({})
 
@@ -187,6 +188,10 @@ export function Home({ userId }: HomeProps) {
         </Form>
       </Main>
       <Box component="section" aria-label="Additional options and information">
+        <Divider sx={{ my: 2 }} />
+        <Box maxWidth={theme.breakpoints.values.sm} mx="auto" px={2}>
+          <RoomHistoryList />
+        </Box>
         <Divider sx={{ my: 2 }} />
         <Box maxWidth={theme.breakpoints.values.sm} mx="auto" px={2}>
           <CommunityRoomSelector />

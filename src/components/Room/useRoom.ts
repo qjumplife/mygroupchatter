@@ -325,11 +325,19 @@ export function useRoom(
     }
 
     setRoomId(roomId)
+    
+    // 保存公共房间到历史
+    if (!isPrivate) {
+      ;(async () => {
+        const { addRoomToHistory } = await import('services/RoomHistory')
+        addRoomToHistory(roomId, undefined, false)
+      })()
+    }
 
     return () => {
       setRoomId(undefined)
     }
-  }, [roomId, setRoomId, isDirectMessageRoom])
+  }, [roomId, setRoomId, isDirectMessageRoom, isPrivate])
 
   useEffect(() => {
     if (isShowingMessages) setUnreadMessages(0)
@@ -1051,6 +1059,10 @@ export function useRoom(
           sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
         }
         
+        // 保存到房间历史
+        const { addRoomToHistory } = await import('services/RoomHistory')
+        addRoomToHistory(roomId, password, false)
+        
         // 检查当前标签页是否已经是管理员
         const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
         
@@ -1099,6 +1111,9 @@ export function useRoom(
             setAuthorityPackage(authorityPkg)
             sendAuthorityPackage(authorityPkg)
             sendCreatorClaim(claim)
+            // 更新房间历史
+            const { addRoomToHistory } = await import('services/RoomHistory')
+            addRoomToHistory(roomId, password, true)
             return
           }
         }
@@ -1179,6 +1194,11 @@ export function useRoom(
           setIsRoomCreator(true)
           // 标记当前标签页为管理员
           sessionStorage.setItem(`chitchatter_session_creator_${roomId}`, 'true')
+          // 更新房间历史
+          ;(async () => {
+            const { addRoomToHistory } = await import('services/RoomHistory')
+            addRoomToHistory(roomId, password, true)
+          })()
           // 持久化 authorityPackage（加密）
           ;(async () => {
             if (password) {
