@@ -1157,6 +1157,11 @@ export function useRoom(
             if (!authorityPkg.creatorId) {
               authorityPkg.creatorId = userId
             }
+            // 重新签名（因为添加了新字段）
+            const { signAuthorityPackage } = await import('services/Encryption')
+            const newSignature = await signAuthorityPackage(authorityPkg, restored.privateKey)
+            authorityPkg.signature = newSignature
+            
             setAuthorityPackage(authorityPkg)
             sendAuthorityPackage(authorityPkg)
             sendCreatorClaim(claim)
