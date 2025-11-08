@@ -696,17 +696,28 @@ export function useRoom(
     peerAction: PeerAction.AUTHORITY_PACKAGE,
     peerRoom,
     onReceive: async (receivedPackage, peerId) => {
-      // 关键修复：如果我是管理员，比较 timestamp，如果对方更早则降级退出
-      if (isRoomCreator && authorityPackage) {
+      console.log('[AuthorityPackage] 收到:', {
+        isRoomCreator,
+        hasMyPackage: !!authorityPackage,
+        myTimestamp: authorityPackage?.timestamp,
+        receivedTimestamp: receivedPackage.timestamp,
+        peerId
+      })
+
+      // 关键修复：只有当我是管理员且已经有 authorityPackage 时才比较
+      if (isRoomCreator && authorityPackage && authorityPackage.keyset && authorityPackage.keyset.length >= 0) {
         const myTime = new Date(authorityPackage.timestamp).getTime()
         const receivedTime = new Date(receivedPackage.timestamp).getTime()
         
-        if (receivedTime < myTime) {
-          // 对方的 AuthorityPackage 更早，说明对方的管理员才是真正的
-          console.log('[降级] 收到更早的 AuthorityPackage，主动降级退出', {
-            myTime: new Date(myTime).toISOString(),
-            receivedTime: new Date(receivedTime).toISOString()
-          })
+        console.log('[AuthorityPackage] 管理员比较时间戳:', {
+          myTime: new Date(myTime).toISOString(),
+          receivedTime: new Date(receivedTime).toISOString(),
+          diff: myTime - receivedTime
+        })
+        
+        // 只有当对方的时间戳明显更早（超过 1 秒）才降级
+        if (receivedTime < myTime - 1000) {
+          console.log('[降级] 收到更早的 AuthorityPackage，主动降级退出')
           
           setIsRoomCreator(false)
           setCreatorPrivateKey(null)
@@ -724,7 +735,7 @@ export function useRoom(
           }, 1500)
           return
         }
-        // 我的更早或相同，忽略
+        console.log('[AuthorityPackage] 我的时间戳更早或相同，忽略对方的包')
         return
       }
 
