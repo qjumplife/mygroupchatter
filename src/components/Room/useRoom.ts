@@ -102,13 +102,14 @@ export function useRoom(
     ? (shellMessageLog.directMessageLog[targetPeerId] ?? [])
     : (Array.isArray(shellMessageLog.groupMessageLog) ? shellMessageLog.groupMessageLog : [])
 
-  const [peerRoom] = useState(
-    () =>
-      peerRoomRef.current ??
-      new PeerRoom({ password: password ?? roomId, ...roomConfig }, roomId)
-  )
-
-  peerRoomRef.current = peerRoom
+  const [peerRoom] = useState(() => {
+    if (peerRoomRef.current) {
+      return peerRoomRef.current
+    }
+    const newPeerRoom = new PeerRoom({ password: password ?? roomId, ...roomConfig }, roomId)
+    peerRoomRef.current = newPeerRoom
+    return newPeerRoom
+  })
 
   const settingsContext = useContext(SettingsContext)
   const { showActiveTypingStatus } = settingsContext.getUserSettings()
