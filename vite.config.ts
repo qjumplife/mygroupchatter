@@ -34,10 +34,7 @@ const srcPathAliases = srcPaths.reduce((acc, dir) => {
 
 const config = () => {
   return defineConfig({
-    // NOTE: Uncomment this if you are hosting Chitchatter on GitHub Pages
-    // without a custom domain. If you renamed the repo to something other than
-    // "chitchatter", then use that instead of "chitchatter" here.
-    // base: '/chitchatter/',
+    base: '/mygroupchatter/',
     server: {
       proxy: {
         '/api': {
