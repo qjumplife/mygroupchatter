@@ -694,8 +694,35 @@ export function useRoom(
     peerAction: PeerAction.AUTHORITY_PACKAGE,
     peerRoom,
     onReceive: async (receivedPackage, peerId) => {
-      // 如果我是管理员，忽略其他 AuthorityPackage（管理员不能被降级）
-      if (isRoomCreator) {
+      // 关键修复：如果我是管理员，比较 timestamp，如果对方更早则降级退出
+      if (isRoomCreator && authorityPackage) {
+        const myTime = new Date(authorityPackage.timestamp).getTime()
+        const receivedTime = new Date(receivedPackage.timestamp).getTime()
+        
+        if (receivedTime < myTime) {
+          // 对方的 AuthorityPackage 更早，说明对方的管理员才是真正的
+          console.log('[降级] 收到更早的 AuthorityPackage，主动降级退出', {
+            myTime: new Date(myTime).toISOString(),
+            receivedTime: new Date(receivedTime).toISOString()
+          })
+          
+          setIsRoomCreator(false)
+          setCreatorPrivateKey(null)
+          setContentKey(null)
+          myClaimRef.current = null
+          setMyCreatorClaim(null)
+          localStorage.removeItem(`chitchatter_creator_${roomId}`)
+          localStorage.removeItem(`chitchatter_authority_${roomId}`)
+          sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+          
+          showAlert('检测到更早的管理员，退出房间', { severity: 'error' })
+          setTimeout(() => {
+            peerRoom.leaveRoom()
+            window.location.href = window.location.pathname
+          }, 1500)
+          return
+        }
+        // 我的更早或相同，忽略
         return
       }
 
@@ -830,6 +857,15 @@ export function useRoom(
           }
 
           await Promise.all(promises)
+
+          // 私有房间：如果我有 AuthorityPackage，主动发送给新 peer（管理员或普通成员）
+          if (isPrivate && authorityPackage) {
+            console.log('[onPeerJoin] 发送 AuthorityPackage 给新 peer')
+            sendAuthorityPackage(authorityPackage)
+            if (isRoomCreator && myClaimRef.current) {
+              sendCreatorClaim(myClaimRef.current)
+            }
+          }
 
           // 私有房间：新用户需要验证
           if (isPrivate && !isRoomCreator && !contentKey) {
@@ -1036,9 +1072,14 @@ export function useRoom(
             try {
               const { decryptWithPassword } = await import('services/Encryption')
               const decrypted = await decryptWithPassword(storedAuthority, password, `authority-${roomId}`)
-              setAuthorityPackage(JSON.parse(decrypted))
+              const authorityPkg = JSON.parse(decrypted)
+              setAuthorityPackage(authorityPkg)
+              // 关键修复：普通成员也要广播 AuthorityPackage，作为证据
+              sendAuthorityPackage(authorityPkg)
             } catch {
-              setAuthorityPackage(JSON.parse(storedAuthority))
+              const authorityPkg = JSON.parse(storedAuthority)
+              setAuthorityPackage(authorityPkg)
+              sendAuthorityPackage(authorityPkg)
             }
           }
           showAlert('欢迎回来！已自动登录', { severity: 'success' })
