@@ -746,13 +746,15 @@ export function useRoom(
             myCreatorId: authorityPackage.creatorId,
             receivedCreatorId: receivedPackage.creatorId
           })
+          // 真正的管理员冲突：删除当前房间的 localStorage 数据
           setIsRoomCreator(false)
           setCreatorPrivateKey(null)
           setContentKey(null)
           myClaimRef.current = null
           setMyCreatorClaim(null)
-          // 注意：不删除 localStorage 中的 creator 信息，因为可能是错误的分支冲突
-          // 只清除当前标签页的状态
+          // 只删除当前 roomId 的数据，不影响其他房间
+          localStorage.removeItem(`chitchatter_creator_${roomId}`)
+          localStorage.removeItem(`chitchatter_authority_${roomId}`)
           sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
           showAlert('检测到更早的管理员，退出房间', { severity: 'error' })
           setTimeout(() => {
