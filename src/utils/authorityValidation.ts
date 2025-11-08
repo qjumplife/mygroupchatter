@@ -116,13 +116,53 @@ export function validateJoinResponse(
 }
 
 /**
+ * 显示验证错误的自定义对话框（右上角）
+ */
+function showValidationError(typeName: string, context: string, errors: string[]): void {
+  const dialog = document.createElement('div')
+  dialog.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #ff5252;
+    color: white;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10000;
+    max-width: 400px;
+    font-family: monospace;
+    font-size: 14px;
+  `
+  dialog.innerHTML = `
+    <div style="font-weight: bold; margin-bottom: 8px;">
+      ⚠️ ${typeName} 验证失败 [${context}]
+    </div>
+    <div style="font-size: 12px;">
+      ${errors.map(e => `• ${e}`).join('<br>')}
+    </div>
+    <button onclick="this.parentElement.remove()" style="
+      margin-top: 12px;
+      padding: 6px 12px;
+      background: white;
+      color: #ff5252;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    ">关闭</button>
+  `
+  document.body.appendChild(dialog)
+  setTimeout(() => dialog.remove(), 10000)
+}
+
+/**
  * 通用断言函数（开发模式显示警告）
  */
 function assert(result: ValidationResult, context: string, typeName: string): boolean {
   if (!result.valid && import.meta.env.DEV) {
-    const errorMsg = `${typeName} 验证失败 [${context}]:\n${result.errors.join('\n')}`
-    console.error(errorMsg)
-    alert(errorMsg)
+    console.error(`${typeName} 验证失败 [${context}]:`, result.errors)
+    showValidationError(typeName, context, result.errors)
   }
   return result.valid
 }
