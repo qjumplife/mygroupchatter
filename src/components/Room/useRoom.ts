@@ -624,6 +624,7 @@ export function useRoom(
       console.log('[JOIN_RESPONSE] 收到验证响应:', { response, peerId })
       if (response.result === 'DENY') {
         console.log('[JOIN_RESPONSE] 验证被拒绝:', response.reason)
+        sessionStorage.removeItem(`invite_key_${roomId}`)
         showAlert(`验证失败: ${response.reason || '无效的邀请密钥'}`, { severity: 'error' })
         return
       }
