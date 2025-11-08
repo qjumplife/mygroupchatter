@@ -1052,7 +1052,7 @@ export function useRoom(
     })()
   }, [roomId, password, isPrivate, userId, showAlert, sendAuthorityPackage, sendCreatorClaim])
 
-  // 创建者竞争：无本地信息时等待 5 秒
+  // 创建者竞争：无本地信息时等待 3 秒
   useEffect(() => {
     if (!isPrivate || contentKey || myCreatorClaim || isRoomCreator) return
 
@@ -1067,14 +1067,14 @@ export function useRoom(
       // 有本地信息则不竞争
       if (hasCreator || hasVerified) return
 
-      // 无本地信息，等待 5 秒接收 AuthorityPackage
+      // 无本地信息，等待 3 秒接收 AuthorityPackage 或 CreatorClaim
       const authority = await createRoomAuthority(roomId, password!, userId)
       myClaimRef.current = authority.claim
       setMyCreatorClaim(authority.claim)
       sendCreatorClaim(authority.claim)
 
       setTimeout(() => {
-        // 如果收到了 AuthorityPackage，说明已有管理员，不成为管理员
+        // 如果收到了 AuthorityPackage，说明已有管理员
         if (authorityPackage && authorityPackage.keyset !== undefined) {
           myClaimRef.current = null
           setMyCreatorClaim(null)
@@ -1082,40 +1082,41 @@ export function useRoom(
           return
         }
 
-        // 如果被其他声明击败
+        // 如果收到其他 CreatorClaim 且被击败
+        if (winningClaimRef.current && winningClaimRef.current.claimHash !== authority.claim.claimHash) {
+          myClaimRef.current = null
+          setMyCreatorClaim(null)
+          showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
+          return
+        }
+
+        // 如果我的 claim 被清空（被其他逻辑放弃）
         if (!myClaimRef.current) {
           showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
           return
         }
 
-        // 5 秒内没收到任何信息，成为管理员
-        const finalWinner = winningClaimRef.current || authority.claim
-        if (finalWinner.claimHash === authority.claim.claimHash) {
-          setAuthorityPackage(authority.authorityPackage)
-          setContentKey(authority.contentKey)
-          setCreatorPublicKey(authority.publicKey)
-          setCreatorPrivateKey(authority.privateKey)
-          setIsRoomCreator(true)
-          // 标记当前标签页为管理员
-          sessionStorage.setItem(`chitchatter_session_creator_${roomId}`, 'true')
-          // 持久化 authorityPackage（加密）
-          ;(async () => {
-            if (password) {
-              const { encryptWithPassword } = await import('services/Encryption')
-              const encrypted = await encryptWithPassword(
-                JSON.stringify(authority.authorityPackage),
-                password,
-                `authority-${roomId}`
-              )
-              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
-            }
-          })()
-          sendAuthorityPackage(authority.authorityPackage)
-          showAlert('你是房间管理员', { severity: 'success' })
-        } else {
-          showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
-        }
-      }, 5000)
+        // 3 秒内没收到任何信息，成为管理员
+        setAuthorityPackage(authority.authorityPackage)
+        setContentKey(authority.contentKey)
+        setCreatorPublicKey(authority.publicKey)
+        setCreatorPrivateKey(authority.privateKey)
+        setIsRoomCreator(true)
+        sessionStorage.setItem(`chitchatter_session_creator_${roomId}`, 'true')
+        ;(async () => {
+          if (password) {
+            const { encryptWithPassword } = await import('services/Encryption')
+            const encrypted = await encryptWithPassword(
+              JSON.stringify(authority.authorityPackage),
+              password,
+              `authority-${roomId}`
+            )
+            localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
+          }
+        })()
+        sendAuthorityPackage(authority.authorityPackage)
+        showAlert('你是房间管理员', { severity: 'success' })
+      }, 3000)
     })()
   }, [isPrivate, contentKey, myCreatorClaim, isRoomCreator, roomId, password, userId, sendCreatorClaim, authorityPackage, sendAuthorityPackage, showAlert])
 
