@@ -17,6 +17,7 @@ export interface InviteKeyRecord {
 }
 
 export interface AuthorityPackage {
+  roomId: string                     // 房间ID，用于验证包是否属于当前房间
   version: number                    // 单调递增版本号
   timestamp: string                  // 最后更新时间 UTC ISO 8601
   createdAt: string                  // 包创建时间 UTC ISO 8601（管理员成为管理员的时间）

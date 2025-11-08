@@ -31,6 +31,7 @@ export const createRoomAuthority = async (
   // 3. 初始化空的 L
   const now = new Date().toISOString()
   const L = {
+    roomId,
     version: 1,
     timestamp: now,
     createdAt: now,

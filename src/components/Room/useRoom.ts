@@ -711,8 +711,19 @@ export function useRoom(
         receivedTimestamp: receivedPackage.timestamp,
         myCreatorId: authorityPackage?.creatorId,
         receivedCreatorId: receivedPackage.creatorId,
+        myRoomId: roomId,
+        receivedRoomId: receivedPackage.roomId,
         peerId
       })
+      
+      // 首先验证 roomId，防止跨房间消息
+      if (receivedPackage.roomId && receivedPackage.roomId !== roomId) {
+        console.warn('[AuthorityPackage] 忽略不同房间的包:', {
+          expected: roomId,
+          received: receivedPackage.roomId
+        })
+        return
+      }
 
       // 如果我是管理员
       if (isRoomCreator && authorityPackage) {
@@ -1121,6 +1132,7 @@ export function useRoom(
             } else {
               const now = new Date().toISOString()
               authorityPkg = {
+                roomId,
                 version: 1,
                 timestamp: now,
                 createdAt: now,
@@ -1129,7 +1141,10 @@ export function useRoom(
                 signature: '',
               }
             }
-            // 确保旧数据有 createdAt 和 creatorId
+            // 确保旧数据有 roomId, createdAt 和 creatorId
+            if (!authorityPkg.roomId) {
+              authorityPkg.roomId = roomId
+            }
             if (!authorityPkg.createdAt) {
               authorityPkg.createdAt = authorityPkg.timestamp
             }
