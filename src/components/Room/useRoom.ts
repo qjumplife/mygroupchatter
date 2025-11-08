@@ -222,7 +222,14 @@ export function useRoom(
       creatorPrivateKey,
       setCreatorPrivateKey,
       broadcastAuthorityPackage: (pkg: AuthorityPackage) => {
-        console.log('[broadcastAuthorityPackage] 广播 AuthorityPackage:', pkg)
+        console.log('[broadcastAuthorityPackage] 广播 AuthorityPackage:', {
+          version: pkg.version,
+          timestamp: pkg.timestamp,
+          roomId: pkg.roomId,
+          creatorId: pkg.creatorId,
+          createdAt: pkg.createdAt,
+          keysetLength: pkg.keyset?.length
+        })
         if (sendAuthorityPackageRef.current) {
           sendAuthorityPackageRef.current(pkg)
         }
