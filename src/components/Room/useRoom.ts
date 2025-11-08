@@ -330,7 +330,7 @@ export function useRoom(
     if (!isPrivate) {
       ;(async () => {
         const { addRoomToHistory } = await import('services/RoomHistory')
-        addRoomToHistory(roomId, undefined, false)
+        addRoomToHistory(roomId)
       })()
     }
 
@@ -1061,7 +1061,7 @@ export function useRoom(
         
         // 保存到房间历史
         const { addRoomToHistory } = await import('services/RoomHistory')
-        addRoomToHistory(roomId, password, false)
+        addRoomToHistory(roomId, password)
         
         // 检查当前标签页是否已经是管理员
         const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
@@ -1113,7 +1113,7 @@ export function useRoom(
             sendCreatorClaim(claim)
             // 更新房间历史
             const { addRoomToHistory } = await import('services/RoomHistory')
-            addRoomToHistory(roomId, password, true)
+            addRoomToHistory(roomId, password)
             return
           }
         }
@@ -1197,7 +1197,7 @@ export function useRoom(
           // 更新房间历史
           ;(async () => {
             const { addRoomToHistory } = await import('services/RoomHistory')
-            addRoomToHistory(roomId, password, true)
+            addRoomToHistory(roomId, password)
           })()
           // 持久化 authorityPackage（加密）
           ;(async () => {

@@ -9,6 +9,7 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import Chip from '@mui/material/Chip'
 import { getRoomHistory, removeRoomFromHistory, RoomHistoryItem } from 'services/RoomHistory'
+import { isCreator } from 'services/Authority'
 
 export const RoomHistoryList = () => {
   const [history, setHistory] = useState<RoomHistoryItem[]>([])
@@ -56,7 +57,7 @@ export const RoomHistoryList = () => {
                   <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                     {item.roomId.length > 20 ? `${item.roomId.slice(0, 8)}...${item.roomId.slice(-4)}` : item.roomId}
                   </Typography>
-                  {item.isCreator && <Chip label="管理员" size="small" color="primary" />}
+                  {isCreator(item.roomId) && <Chip label="管理员" size="small" color="primary" />}
                   {item.password && <Chip label="私有" size="small" />}
                 </Box>
               }

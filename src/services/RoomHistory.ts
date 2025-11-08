@@ -1,7 +1,6 @@
 export interface RoomHistoryItem {
   roomId: string
   password?: string
-  isCreator: boolean
   lastAccess: string
 }
 
@@ -17,14 +16,13 @@ export const getRoomHistory = (): RoomHistoryItem[] => {
   }
 }
 
-export const addRoomToHistory = (roomId: string, password?: string, isCreator: boolean = false) => {
+export const addRoomToHistory = (roomId: string, password?: string) => {
   const history = getRoomHistory()
   const existing = history.findIndex(item => item.roomId === roomId)
   
   const newItem: RoomHistoryItem = {
     roomId,
     password,
-    isCreator,
     lastAccess: new Date().toISOString(),
   }
   
