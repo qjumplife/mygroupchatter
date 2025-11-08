@@ -1133,14 +1133,26 @@ export function useRoom(
             
             // 恢复或创建 authorityPackage
             const storedAuthority = localStorage.getItem(`chitchatter_authority_${roomId}`)
+            console.log('[管理员恢复] localStorage中的authority:', storedAuthority ? '存在' : '不存在')
             let authorityPkg: AuthorityPackage
             if (storedAuthority) {
               try {
                 const { decryptWithPassword } = await import('services/Encryption')
                 const decrypted = await decryptWithPassword(storedAuthority, password!, `authority-${roomId}`)
                 authorityPkg = JSON.parse(decrypted)
+                console.log('[管理员恢复] 从localStorage恢复:', {
+                  version: authorityPkg.version,
+                  roomId: authorityPkg.roomId,
+                  creatorId: authorityPkg.creatorId,
+                  createdAt: authorityPkg.createdAt
+                })
               } catch {
                 authorityPkg = JSON.parse(storedAuthority)
+                console.log('[管理员恢复] 解密失败，使用明文:', {
+                  version: authorityPkg.version,
+                  roomId: authorityPkg.roomId,
+                  creatorId: authorityPkg.creatorId
+                })
               }
             } else {
               const now = new Date().toISOString()
@@ -1153,22 +1165,43 @@ export function useRoom(
                 keyset: [],
                 signature: '',
               }
+              console.log('[管理员恢复] 创建新的authority:', {
+                version: authorityPkg.version,
+                roomId: authorityPkg.roomId,
+                creatorId: authorityPkg.creatorId
+              })
             }
             // 确保旧数据有 roomId, createdAt 和 creatorId
+            let needsResign = false
             if (!authorityPkg.roomId) {
               authorityPkg.roomId = roomId
+              needsResign = true
+              console.log('[管理员恢复] 添加roomId')
             }
             if (!authorityPkg.createdAt) {
               authorityPkg.createdAt = authorityPkg.timestamp
+              needsResign = true
+              console.log('[管理员恢复] 添加createdAt')
             }
             if (!authorityPkg.creatorId) {
               authorityPkg.creatorId = userId
+              needsResign = true
+              console.log('[管理员恢复] 添加creatorId')
             }
             // 重新签名（因为添加了新字段）
-            const { signAuthorityPackage } = await import('services/Encryption')
-            const newSignature = await signAuthorityPackage(authorityPkg, restored.privateKey)
-            authorityPkg.signature = newSignature
+            if (needsResign) {
+              const { signAuthorityPackage } = await import('services/Encryption')
+              const newSignature = await signAuthorityPackage(authorityPkg, restored.privateKey)
+              authorityPkg.signature = newSignature
+              console.log('[管理员恢复] 重新签名')
+            }
             
+            console.log('[管理员恢复] 最终的authority:', {
+              version: authorityPkg.version,
+              roomId: authorityPkg.roomId,
+              creatorId: authorityPkg.creatorId,
+              createdAt: authorityPkg.createdAt
+            })
             setAuthorityPackage(authorityPkg)
             sendAuthorityPackage(authorityPkg)
             sendCreatorClaim(claim)
