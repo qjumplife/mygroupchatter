@@ -709,6 +709,8 @@ export function useRoom(
         hasMyPackage: !!authorityPackage,
         myTimestamp: authorityPackage?.timestamp,
         receivedTimestamp: receivedPackage.timestamp,
+        myCreatorId: authorityPackage?.creatorId,
+        receivedCreatorId: receivedPackage.creatorId,
         peerId
       })
 
@@ -738,14 +740,19 @@ export function useRoom(
         const receivedCreatedTime = new Date(receivedPackage.createdAt || receivedPackage.timestamp).getTime()
         
         if (receivedCreatedTime < myCreatedTime) {
-          console.log('[降级] 对方更早，主动降级')
+          console.log('[降级] 对方更早，主动降级', {
+            myCreatedTime: new Date(myCreatedTime).toISOString(),
+            receivedCreatedTime: new Date(receivedCreatedTime).toISOString(),
+            myCreatorId: authorityPackage.creatorId,
+            receivedCreatorId: receivedPackage.creatorId
+          })
           setIsRoomCreator(false)
           setCreatorPrivateKey(null)
           setContentKey(null)
           myClaimRef.current = null
           setMyCreatorClaim(null)
-          localStorage.removeItem(`chitchatter_creator_${roomId}`)
-          localStorage.removeItem(`chitchatter_authority_${roomId}`)
+          // 注意：不删除 localStorage 中的 creator 信息，因为可能是错误的分支冲突
+          // 只清除当前标签页的状态
           sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
           showAlert('检测到更早的管理员，退出房间', { severity: 'error' })
           setTimeout(() => {
