@@ -23,9 +23,10 @@ export const RoomHistoryList = () => {
   }
 
   const handleOpen = (item: RoomHistoryItem) => {
+    const base = '/mygroupchatter'
     const path = item.password 
-      ? `/private/${item.roomId}#pwd=${item.password}` 
-      : `/public/${item.roomId}`
+      ? `${base}/private/${item.roomId}#pwd=${item.password}` 
+      : `${base}/public/${item.roomId}`
     window.open(path, '_blank')
   }
 
