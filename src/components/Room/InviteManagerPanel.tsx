@@ -223,7 +223,7 @@ export const InviteManagerPanel = () => {
             </div>
             <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
               <button
-                onClick={handleCopyKey}
+                onClick={() => handleCopyKey()}
                 style={{
                   padding: '4px 10px',
                   backgroundColor: '#4caf50',
