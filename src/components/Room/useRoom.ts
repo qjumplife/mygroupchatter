@@ -716,8 +716,27 @@ export function useRoom(
 
       // 如果我是管理员
       if (isRoomCreator && authorityPackage) {
-        // 检查是不是自己的包（比较 creatorId 和 userId）
-        if (receivedPackage.creatorId === authorityPackage.creatorId || receivedPackage.creatorId === userId) {
+        // 首先检查：如果收到的包的 creatorId 就是当前 userId，说明是自己的包
+        if (receivedPackage.creatorId === userId) {
+          // 是自己的包，检查版本号，只接受更新的
+          if (receivedPackage.version > authorityPackage.version) {
+            console.log('[AuthorityPackage] 接收自己的更新包')
+            setAuthorityPackage(receivedPackage)
+            if (password) {
+              const { encryptWithPassword } = await import('services/Encryption')
+              const encrypted = await encryptWithPassword(
+                JSON.stringify(receivedPackage),
+                password,
+                `authority-${roomId}`
+              )
+              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
+            }
+          }
+          return
+        }
+        
+        // 检查是不是同一个 creatorId 的包
+        if (receivedPackage.creatorId === authorityPackage.creatorId) {
           // 是自己的包，检查版本号，只接受更新的
           if (receivedPackage.version > authorityPackage.version) {
             console.log('[AuthorityPackage] 接收自己的更新包')
