@@ -1278,6 +1278,11 @@ export function useRoom(
               localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
             }
           })()
+          console.log('[5秒竞争] 成为管理员，广播 AuthorityPackage:', {
+            roomId: authority.authorityPackage.roomId,
+            creatorId: authority.authorityPackage.creatorId,
+            version: authority.authorityPackage.version
+          })
           sendAuthorityPackage(authority.authorityPackage)
           showAlert('你是房间管理员', { severity: 'success' })
         } else {
