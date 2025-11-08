@@ -1,10 +1,5 @@
-let trackerUrls: string[] | undefined = [
-  'wss://tracker.openwebtorrent.com',
-  'wss://tracker.webtorrent.dev',
-  'wss://tracker.files.fm:7073/announce',
-  'wss://tracker.btorrent.xyz',
-  'wss://tracker.fastcast.nz',
-]
+// 使用 undefined 让 Trystero 使用默认的 nostr 策略（不需要 tracker）
+let trackerUrls: string[] | undefined = undefined
 
 // If a tracker URL has been provided via the VITE_TRACKER_URL environment
 // variable, prioritize using it. This is mainly relevant for local development
