@@ -790,6 +790,11 @@ export function useRoom(
                 })()
                 
                 console.log('[GROUP_CLAIM] 已清除所有本地数据，成为群外新人')
+                console.log('[GROUP_CLAIM] 降级操作完成，即将跳转到主页')
+                
+                // 立即检查主页isCreator状态
+                const { isCreator } = await import('services/Authority')
+                console.log('[GROUP_CLAIM] 主页isCreator状态:', isCreator(roomId))
                 
                 // 立即停止当前组件的所有操作
                 setIsInitializing(false)
