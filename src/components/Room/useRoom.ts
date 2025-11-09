@@ -824,16 +824,17 @@ export function useRoom(
                 // 立即停止当前组件的所有操作
                 setIsInitializing(false)
                 
-                // 显示警告并立即跳转
-                alert('检测到更早的管理员，你已被降级为群外新人！')
+                // 弹出邀请码输入框
+                const inviteKey = prompt('你的管理员权限已失效。\n\n请输入邀请码重新加入房间，或点击取消退出房间：')
                 
-                // 立即跳转到主页
-                window.location.href = '/'
-                
-                // 如果跳转失败，强制刷新
-                setTimeout(() => {
+                if (inviteKey && inviteKey.trim()) {
+                  // 用户输入了邀请码，保存并刷新页面
+                  sessionStorage.setItem(`invite_key_${roomId}`, inviteKey.trim())
                   window.location.reload()
-                }, 100)
+                } else {
+                  // 用户取消或未输入，跳转到主页
+                  window.location.href = '/'
+                }
               }
             }
             return
