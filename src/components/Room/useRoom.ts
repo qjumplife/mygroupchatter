@@ -790,21 +790,15 @@ export function useRoom(
                 })()
                 
                 console.log('[GROUP_CLAIM] 已清除所有本地数据，成为群外新人')
-                showAlert('检测到更早的管理员，已降级为普通用户', { severity: 'warning' })
                 
-                // 提示输入邀请码
+                // 立即停止当前组件的所有操作
+                setIsInitializing(false)
+                showAlert('检测到更早的管理员，已降级为群外新人', { severity: 'warning' })
+                
+                // 立即跳转到主页，避免继续操作
                 setTimeout(() => {
-                  const inviteKey = prompt('你已被降级为群外新人，请输入邀请密钥以重新加入房间：')
-                  if (inviteKey) {
-                    sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
-                    // 触发验证流程
-                    window.location.reload()
-                  } else {
-                    showAlert('未输入邀请密钥，无法使用房间', { severity: 'error' })
-                    // 跳转到主页
-                    window.location.href = '/'
-                  }
-                }, 1000)
+                  window.location.href = '/'
+                }, 500)
               }
             }
             return
@@ -1258,37 +1252,46 @@ export function useRoom(
         }
         
         // 1. 检查是否是管理员，尝试恢复管理员身份
-        const isCreator = await checkIsRoomCreator(roomId, userId)
-        if (isCreator) {
-          // 确保房间密码已保存到sessionStorage
-          if (!sessionStorage.getItem(`chitchatter_room_password_${roomId}`) && password) {
-            sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
-          }
-          
-          const restored = await restoreCreatorIdentity(roomId, userId)
-          if (restored) {
-            setContentKey(restored.contentKey)
-            setCreatorPrivateKey(restored.privateKey)
-            setIsRoomCreator(true)
-            
-            // 恢复GroupClaim
-            const storedGroupClaim = localStorage.getItem(`chitchatter_groupclaim_${roomId}`)
-            if (storedGroupClaim) {
-              try {
-                const parsedGroupClaim = JSON.parse(storedGroupClaim)
-                setGroupClaim(parsedGroupClaim)
-                console.log('[管理员恢复] GroupClaim已恢复:', parsedGroupClaim.version)
-              } catch (error) {
-                console.error('[管理员恢复] GroupClaim恢复失败:', error)
-              }
+        // 只有在数据完整的情况下才尝试恢复
+        const hasCreatorData = localStorage.getItem(`chitchatter_creator_${roomId}`) !== null
+        const hasPassword = localStorage.getItem(`chitchatter_room_password_${roomId}`) !== null
+        const hasGroupClaim = localStorage.getItem(`chitchatter_groupclaim_${roomId}`) !== null
+        
+        if (hasCreatorData && hasPassword && hasGroupClaim) {
+          const isCreator = await checkIsRoomCreator(roomId, userId)
+          if (isCreator) {
+            // 确保房间密码已保存到sessionStorage
+            if (!sessionStorage.getItem(`chitchatter_room_password_${roomId}`) && password) {
+              sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
             }
             
-            showAlert('管理员身份已恢复', { severity: 'success' })
-            setIsInitializing(false)
-            return
-          } else {
-            console.warn('[管理员恢复] 恢复失败，可能是密码问题')
+            const restored = await restoreCreatorIdentity(roomId, userId)
+            if (restored) {
+              setContentKey(restored.contentKey)
+              setCreatorPrivateKey(restored.privateKey)
+              setIsRoomCreator(true)
+              
+              // 恢复GroupClaim
+              const storedGroupClaim = localStorage.getItem(`chitchatter_groupclaim_${roomId}`)
+              if (storedGroupClaim) {
+                try {
+                  const parsedGroupClaim = JSON.parse(storedGroupClaim)
+                  setGroupClaim(parsedGroupClaim)
+                  console.log('[管理员恢复] GroupClaim已恢复:', parsedGroupClaim.version)
+                } catch (error) {
+                  console.error('[管理员恢复] GroupClaim恢复失败:', error)
+                }
+              }
+              
+              showAlert('管理员身份已恢复', { severity: 'success' })
+              setIsInitializing(false)
+              return
+            } else {
+              console.warn('[管理员恢复] 恢复失败，可能是密码问题')
+            }
           }
+        } else {
+          console.log('[初始化] 管理员数据不完整，跳过恢复')
         }
         
         // 2. 检查普通用户验证信息
