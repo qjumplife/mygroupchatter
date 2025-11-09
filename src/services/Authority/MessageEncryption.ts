@@ -24,19 +24,22 @@ export const decryptMessageContent = async (
   encryptedData: EncryptedData | string
 ): Promise<string> => {
   if (!contentKey) {
-    // 未验证用户看到占位符
+    console.log('[消息解密] 无contentKey，返回占位符')
     return '[🔒 加密消息 - 需要验证]'
   }
 
   // 兼容旧格式（字符串）
   if (typeof encryptedData === 'string') {
+    console.log('[消息解密] 检测到明文消息，直接返回')
     return encryptedData
   }
 
   try {
-    return await decryptMessage(contentKey, encryptedData)
+    const decrypted = await decryptMessage(contentKey, encryptedData)
+    console.log('[消息解密] 解密成功')
+    return decrypted
   } catch (error) {
-    console.error('解密消息失败:', error)
+    console.error('[消息解密] 解密失败:', error)
     return '[❌ 解密失败]'
   }
 }

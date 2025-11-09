@@ -146,25 +146,47 @@ const loadCreatorInfo = async (roomId: string): Promise<CreatorInfo | null> => {
   try {
     const storageKey = `chitchatter_creator_${roomId}`
     const stored = localStorage.getItem(storageKey)
-    if (!stored) return null
+    if (!stored) {
+      console.log('[管理员恢复] 未找到存储数据')
+      return null
+    }
     
-    // 尝试解密
     const password = sessionStorage.getItem(`chitchatter_room_password_${roomId}`)
+    console.log('[管理员恢复] 密码状态:', password ? '存在' : '不存在')
+    
     if (password) {
       try {
         const { decryptWithPassword } = await import('services/Encryption')
         const decrypted = await decryptWithPassword(stored, password, `creator-${roomId}`)
-        return JSON.parse(decrypted)
-      } catch {
-        // 解密失败，尝试明文解析（兼容旧数据）
-        return JSON.parse(stored)
+        const info = JSON.parse(decrypted)
+        console.log('[管理员恢复] 解密成功')
+        return info
+      } catch (decryptError) {
+        console.error('[管理员恢复] 解密失败:', decryptError)
+        
+        // 尝试明文解析（兼容旧数据）
+        try {
+          const info = JSON.parse(stored)
+          console.log('[管理员恢复] 明文解析成功（兼容模式）')
+          return info
+        } catch (parseError) {
+          console.error('[管理员恢复] 明文解析也失败:', parseError)
+          return null
+        }
       }
     } else {
       // 无密码，尝试明文解析
-      return JSON.parse(stored)
+      try {
+        const info = JSON.parse(stored)
+        console.log('[管理员恢复] 明文解析成功（无密码）')
+        return info
+      } catch (parseError) {
+        console.error('[管理员恢复] 明文解析失败:', parseError)
+        return null
+      }
     }
   } catch (error) {
-    console.error('加载管理员信息失败:', error)
+    console.error('[管理员恢复] 加载管理员信息失败:', error)
     return null
   }
 }
@@ -273,22 +295,31 @@ export const loadVerifiedUser = async (
   try {
     const storageKey = `chitchatter_verified_${roomId}_${userId}`
     const stored = localStorage.getItem(storageKey)
-    if (!stored) return null
+    if (!stored) {
+      console.log('[用户恢复] 未找到验证数据')
+      return null
+    }
 
-    // 解密数据
-    const { decryptWithPassword } = await import('services/Encryption')
-    const decrypted = await decryptWithPassword(stored, roomId, `verified-${userId}`)
-    const verifiedInfo = JSON.parse(decrypted)
-    
-    const contentKey = await importKeyFromString(
-      verifiedInfo.contentKey,
-      'AES-GCM',
-      'secret',
-      ['encrypt', 'decrypt']
-    )
-    return contentKey
+    try {
+      // 解密数据
+      const { decryptWithPassword } = await import('services/Encryption')
+      const decrypted = await decryptWithPassword(stored, roomId, `verified-${userId}`)
+      const verifiedInfo = JSON.parse(decrypted)
+      
+      const contentKey = await importKeyFromString(
+        verifiedInfo.contentKey,
+        'AES-GCM',
+        'secret',
+        ['encrypt', 'decrypt']
+      )
+      console.log('[用户恢复] 解密成功')
+      return contentKey
+    } catch (decryptError) {
+      console.error('[用户恢复] 解密失败:', decryptError)
+      return null
+    }
   } catch (error) {
-    console.error('恢复验证信息失败:', error)
+    console.error('[用户恢复] 恢复验证信息失败:', error)
     return null
   }
 }
