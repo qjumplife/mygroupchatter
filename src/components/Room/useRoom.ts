@@ -672,6 +672,12 @@ export function useRoom(
         console.log('[JOIN_RESPONSE] 验证被拒绝:', response.reason)
         sessionStorage.removeItem(`invite_key_${roomId}`)
         showAlert(`验证失败: ${response.reason || '无效的邀请密钥'}`, { severity: 'error' })
+        // 提示用户刷新页面以重新输入邀请码
+        setTimeout(() => {
+          if (window.confirm('邀请码验证失败，是否刷新页面重新输入？')) {
+            window.location.reload()
+          }
+        }, 1000)
         return
       }
 
