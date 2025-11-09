@@ -1,4 +1,4 @@
-import { GroupClaim, JoinRequest, JoinResponse, MessageType, ValidationError, InviteKeyRecord } from 'models/groupClaim'
+import { GroupClaim, JoinRequest, JoinResponse, StatusUpdateNotification, StatusUpdateAck, AdminPing, AdminPong, MessageType, ValidationError, InviteKeyRecord } from 'models/groupClaim'
 
 export interface ValidationResult {
   isValid: boolean
@@ -282,6 +282,142 @@ export const validateJoinResponse = (data: any): ValidationResult => {
   return { isValid: true }
 }
 
+// StatusUpdateNotification 验证
+export const validateStatusUpdateNotification = (data: any): ValidationResult => {
+  if (!data || typeof data !== 'object') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_STRUCTURE,
+      message: 'StatusUpdateNotification must be an object'
+    }
+  }
+
+  if (data.type !== 'STATUS_UPDATE_NOTIFICATION') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FIELD_TYPE,
+      message: 'type must be STATUS_UPDATE_NOTIFICATION'
+    }
+  }
+
+  const required = ['hashKi', 'newStatus', 'usedBy', 'timestamp']
+  for (const field of required) {
+    if (!data[field]) {
+      return {
+        isValid: false,
+        error: ValidationError.MISSING_REQUIRED_FIELD,
+        message: `Missing required field: ${field}`
+      }
+    }
+  }
+
+  if (data.newStatus !== 'USED') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FIELD_TYPE,
+      message: 'newStatus must be USED'
+    }
+  }
+
+  return { isValid: true }
+}
+
+// StatusUpdateAck 验证
+export const validateStatusUpdateAck = (data: any): ValidationResult => {
+  if (!data || typeof data !== 'object') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_STRUCTURE,
+      message: 'StatusUpdateAck must be an object'
+    }
+  }
+
+  if (data.type !== 'STATUS_UPDATE_ACK') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FIELD_TYPE,
+      message: 'type must be STATUS_UPDATE_ACK'
+    }
+  }
+
+  const required = ['hashKi', 'timestamp']
+  for (const field of required) {
+    if (!data[field]) {
+      return {
+        isValid: false,
+        error: ValidationError.MISSING_REQUIRED_FIELD,
+        message: `Missing required field: ${field}`
+      }
+    }
+  }
+
+  return { isValid: true }
+}
+
+// AdminPing 验证
+export const validateAdminPing = (data: any): ValidationResult => {
+  if (!data || typeof data !== 'object') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_STRUCTURE,
+      message: 'AdminPing must be an object'
+    }
+  }
+
+  if (data.type !== 'ADMIN_PING') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FIELD_TYPE,
+      message: 'type must be ADMIN_PING'
+    }
+  }
+
+  const required = ['roomId', 'timestamp']
+  for (const field of required) {
+    if (!data[field]) {
+      return {
+        isValid: false,
+        error: ValidationError.MISSING_REQUIRED_FIELD,
+        message: `Missing required field: ${field}`
+      }
+    }
+  }
+
+  return { isValid: true }
+}
+
+// AdminPong 验证
+export const validateAdminPong = (data: any): ValidationResult => {
+  if (!data || typeof data !== 'object') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_STRUCTURE,
+      message: 'AdminPong must be an object'
+    }
+  }
+
+  if (data.type !== 'ADMIN_PONG') {
+    return {
+      isValid: false,
+      error: ValidationError.INVALID_FIELD_TYPE,
+      message: 'type must be ADMIN_PONG'
+    }
+  }
+
+  const required = ['roomId', 'timestamp']
+  for (const field of required) {
+    if (!data[field]) {
+      return {
+        isValid: false,
+        error: ValidationError.MISSING_REQUIRED_FIELD,
+        message: `Missing required field: ${field}`
+      }
+    }
+  }
+
+  return { isValid: true }
+}
+
 // 统一验证入口
 export const validateMessage = (messageType: MessageType, data: any): ValidationResult => {
   switch (messageType) {
@@ -291,6 +427,14 @@ export const validateMessage = (messageType: MessageType, data: any): Validation
       return validateJoinRequest(data)
     case MessageType.JOIN_RESPONSE:
       return validateJoinResponse(data)
+    case MessageType.STATUS_UPDATE_NOTIFICATION:
+      return validateStatusUpdateNotification(data)
+    case MessageType.STATUS_UPDATE_ACK:
+      return validateStatusUpdateAck(data)
+    case MessageType.ADMIN_PING:
+      return validateAdminPing(data)
+    case MessageType.ADMIN_PONG:
+      return validateAdminPong(data)
     default:
       return {
         isValid: false,

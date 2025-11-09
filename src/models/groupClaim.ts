@@ -43,11 +43,41 @@ export interface JoinResponse {
   groupClaim?: GroupClaim  // 成功时附带GroupClaim
 }
 
+export interface StatusUpdateNotification {
+  type: 'STATUS_UPDATE_NOTIFICATION'
+  hashKi: string           // 邀请码哈希
+  newStatus: 'USED'        // 新状态
+  usedBy: string           // 使用者userId
+  timestamp: string        // 通知时间
+}
+
+export interface StatusUpdateAck {
+  type: 'STATUS_UPDATE_ACK'
+  hashKi: string           // 确认的邀请码哈希
+  timestamp: string        // 确认时间
+}
+
+export interface AdminPing {
+  type: 'ADMIN_PING'
+  roomId: string           // 房间ID
+  timestamp: string        // ping时间
+}
+
+export interface AdminPong {
+  type: 'ADMIN_PONG'
+  roomId: string           // 房间ID
+  timestamp: string        // pong时间
+}
+
 // 消息类型枚举
 export enum MessageType {
   GROUP_CLAIM = 'GROUP_CLAIM',
   JOIN_REQUEST = 'JOIN_REQUEST', 
-  JOIN_RESPONSE = 'JOIN_RESPONSE'
+  JOIN_RESPONSE = 'JOIN_RESPONSE',
+  STATUS_UPDATE_NOTIFICATION = 'STATUS_UPDATE_NOTIFICATION',
+  STATUS_UPDATE_ACK = 'STATUS_UPDATE_ACK',
+  ADMIN_PING = 'ADMIN_PING',
+  ADMIN_PONG = 'ADMIN_PONG'
 }
 
 // 消息验证错误类型

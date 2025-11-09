@@ -1,4 +1,4 @@
-import { useState, useCallback, useContext } from 'react'
+import { useState, useCallback, useContext, useEffect } from 'react'
 import { RoomContext } from 'contexts/RoomContext'
 import { InviteKeyRecord, GroupClaim } from 'models/groupClaim'
 import {
@@ -221,6 +221,55 @@ export const useInvitationKeys = () => {
     }
   }, [isRoomCreator, creatorPrivateKey, groupClaim, setGroupClaim, broadcastGroupClaim])
 
+  // 强制重新渲染邀请码列表
+  const [forceUpdate, setForceUpdate] = useState(0)
+  
+  useEffect(() => {
+    setForceUpdate(prev => prev + 1)
+  }, [groupClaim?.version, groupClaim?.keyset?.length])
+  
+  // 管理员检查过期邀请码
+  useEffect(() => {
+    if (!isRoomCreator || !groupClaim || !creatorPrivateKey) return
+    
+    const checkExpiredKeys = async () => {
+      const now = Date.now()
+      let hasExpired = false
+      
+      const updatedKeyset = groupClaim.keyset.map(record => {
+        if (record.status === 'ACTIVE' && new Date(record.expiration).getTime() < now) {
+          hasExpired = true
+          return { ...record, status: 'EXPIRED' as const }
+        }
+        return record
+      })
+      
+      if (hasExpired) {
+        const updatedGroupClaim: GroupClaim = {
+          ...groupClaim,
+          version: groupClaim.version + 1,
+          timestamp: new Date().toISOString(),
+          keyset: updatedKeyset,
+          signature: ''
+        }
+        
+        updatedGroupClaim.signature = await signAuthorityPackage(updatedGroupClaim, creatorPrivateKey)
+        setGroupClaim(updatedGroupClaim)
+        localStorage.setItem(`chitchatter_groupclaim_${groupClaim.roomId}`, JSON.stringify(updatedGroupClaim))
+        broadcastGroupClaim(updatedGroupClaim)
+        
+        console.log('[管理员] 已更新过期邀请码')
+      }
+    }
+    
+    // 立即检查一次
+    checkExpiredKeys()
+    
+    // 每分30秒检查一次
+    const interval = setInterval(checkExpiredKeys, 30000)
+    return () => clearInterval(interval)
+  }, [isRoomCreator, groupClaim, creatorPrivateKey, broadcastGroupClaim])
+
   return {
     keys: groupClaim?.keyset || [],
     generateKey,
@@ -229,5 +278,6 @@ export const useInvitationKeys = () => {
     isGenerating,
     error,
     isRoomCreator,
+    forceUpdate, // 用于强制重新渲染
   }
 }

@@ -41,7 +41,7 @@ import { saveVerifiedUser, loadVerifiedUser, createGroupClaim, restoreCreatorIde
 import { encryptMessageContent, decryptMessageContent, canSendMessage } from 'services/Authority/MessageEncryption'
 import { decryptContentKeyWithKi } from 'services/Authority/Verification'
 import { signAuthorityPackage, sha256 } from 'services/Encryption'
-import { GroupClaim, JoinRequest, JoinResponse, MessageType, InviteKeyRecord } from 'models/groupClaim'
+import { GroupClaim, JoinRequest, JoinResponse, StatusUpdateNotification, StatusUpdateAck, AdminPing, AdminPong, MessageType, InviteKeyRecord } from 'models/groupClaim'
 import { sendGroupClaim, sendJoinRequest as sendJoinReq, sendJoinResponse as sendJoinResp } from 'utils/messageSender'
 import { receiveMessage, messageStats } from 'utils/messageReceiver'
 
@@ -674,8 +674,20 @@ export function useRoom(
               const inviteKeyHash = await sha256(storedInviteKey)
               await saveVerifiedUser(roomId, userId, decryptedContentKey, inviteKeyHash)
               
+              // 存储临时信息，等待管理员上线时发送
+              const tempInfo = {
+                hashKi: inviteKeyHash,
+                usedBy: userId,
+                timestamp: new Date().toISOString(),
+                roomId
+              }
+              localStorage.setItem(`chitchatter_temp_status_${roomId}_${inviteKeyHash}`, JSON.stringify(tempInfo))
+              
               sessionStorage.removeItem(`invite_key_${roomId}`)
               showAlert('验证成功！', { severity: 'success' })
+              
+              // 立即检测管理员是否在线
+              checkAndNotifyAdmin(roomId, tempInfo)
               
             } catch (error) {
               showAlert('密钥错误', { severity: 'error' })
@@ -782,10 +794,142 @@ export function useRoom(
     },
   })
   
+  // 管理员检测和状态更新
+  const [sendStatusNotification] = usePeerAction<StatusUpdateNotification>({
+    namespace,
+    peerAction: PeerAction.STATUS_NOTIFY,
+    peerRoom,
+    onReceive: async (notification, peerId) => {
+      if (!isRoomCreator || !creatorPrivateKey || !groupClaim) return
+      
+      console.log('[管理员] 收到状态更新通知:', notification)
+      
+      // 更新GroupClaim
+      const updatedKeyset = groupClaim.keyset.map(k => 
+        k.hash === notification.hashKi 
+          ? { ...k, status: notification.newStatus, usedBy: notification.usedBy }
+          : k
+      )
+      
+      const updatedGroupClaim: GroupClaim = {
+        ...groupClaim,
+        version: groupClaim.version + 1,
+        timestamp: new Date().toISOString(),
+        keyset: updatedKeyset,
+        signature: ''
+      }
+      
+      updatedGroupClaim.signature = await signAuthorityPackage(updatedGroupClaim, creatorPrivateKey)
+      setGroupClaim(updatedGroupClaim)
+      localStorage.setItem(`chitchatter_groupclaim_${roomId}`, JSON.stringify(updatedGroupClaim))
+      
+      // 广播更新的GroupClaim
+      await sendGroupClaim(updatedGroupClaim, sendGroupClaimAction)
+      
+      // 发送确认
+      const ack: StatusUpdateAck = {
+        type: 'STATUS_UPDATE_ACK',
+        hashKi: notification.hashKi,
+        timestamp: new Date().toISOString()
+      }
+      await sendStatusAck(ack, peerId)
+    },
+  })
+  
+  const [sendStatusAck] = usePeerAction<StatusUpdateAck>({
+    namespace,
+    peerAction: PeerAction.STATUS_ACK,
+    peerRoom,
+    onReceive: async (ack, peerId) => {
+      console.log('[用户] 收到管理员确认:', ack)
+      // 删除临时信息
+      localStorage.removeItem(`chitchatter_temp_status_${roomId}_${ack.hashKi}`)
+    },
+  })
+  
+  const [sendAdminPing] = usePeerAction<AdminPing>({
+    namespace,
+    peerAction: PeerAction.ADMIN_PING,
+    peerRoom,
+    onReceive: async (ping, peerId) => {
+      if (!isRoomCreator) return
+      
+      const pong: AdminPong = {
+        type: 'ADMIN_PONG',
+        roomId: ping.roomId,
+        timestamp: new Date().toISOString()
+      }
+      await sendAdminPong(pong, peerId)
+    },
+  })
+  
+  const [sendAdminPong] = usePeerAction<AdminPong>({
+    namespace,
+    peerAction: PeerAction.ADMIN_PONG,
+    peerRoom,
+    onReceive: async (pong, peerId) => {
+      console.log('[用户] 管理员在线，发送临时信息')
+      sendPendingStatusUpdates(roomId, peerId)
+    },
+  })
+  
+  // 检测管理员并发送临时信息
+  const checkAndNotifyAdmin = async (roomId: string, tempInfo: any) => {
+    const ping: AdminPing = {
+      type: 'ADMIN_PING',
+      roomId,
+      timestamp: new Date().toISOString()
+    }
+    
+    // 广播 ping
+    for (const peer of peerList) {
+      await sendAdminPing(ping, peer.peerId)
+    }
+  }
+  
+  // 发送待处理的状态更新
+  const sendPendingStatusUpdates = async (roomId: string, adminPeerId: string) => {
+    const keys = Object.keys(localStorage)
+    const tempKeys = keys.filter(key => key.startsWith(`chitchatter_temp_status_${roomId}_`))
+    
+    for (const key of tempKeys) {
+      try {
+        const tempInfo = JSON.parse(localStorage.getItem(key) || '{}')
+        const notification: StatusUpdateNotification = {
+          type: 'STATUS_UPDATE_NOTIFICATION',
+          hashKi: tempInfo.hashKi,
+          newStatus: 'USED',
+          usedBy: tempInfo.usedBy,
+          timestamp: tempInfo.timestamp
+        }
+        
+        await sendStatusNotification(notification, adminPeerId)
+      } catch (error) {
+        console.error('发送临时信息失败:', error)
+      }
+    }
+  }
+  
   // 更新 ref
   useEffect(() => {
     sendGroupClaimRef.current = sendGroupClaimAction
   }, [sendGroupClaimAction])
+  
+  // 管理员上线时检查临时信息
+  useEffect(() => {
+    if (!isPrivate) return
+    
+    const checkPendingUpdates = () => {
+      if (!isRoomCreator) {
+        // 普通用户检测管理员
+        checkAndNotifyAdmin(roomId, {})
+      }
+    }
+    
+    // 延迟检查，等待连接建立
+    const timer = setTimeout(checkPendingUpdates, 2000)
+    return () => clearTimeout(timer)
+  }, [isPrivate, isRoomCreator, roomId, peerList.length])
 
   const { privateKey } = settingsContext.getUserSettings()
 
