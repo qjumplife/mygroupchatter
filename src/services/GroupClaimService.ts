@@ -90,23 +90,13 @@ export const restoreCreatorIdentity = async (
 /**
  * 检查是否是管理员
  */
-export const isRoomCreator = (roomId: string, userId: string): boolean => {
-  const sessionKey = `chitchatter_session_creator_${roomId}`
-  const sessionCreator = sessionStorage.getItem(sessionKey)
-  
-  if (sessionCreator === 'true') {
-    const creatorInfo = localStorage.getItem(`chitchatter_creator_${roomId}`)
-    if (creatorInfo) {
-      try {
-        const info = JSON.parse(creatorInfo)
-        return info.userId === userId
-      } catch {
-        return false
-      }
-    }
+export const isRoomCreator = async (roomId: string, userId: string): Promise<boolean> => {
+  try {
+    const creatorInfo = await loadCreatorInfo(roomId)
+    return creatorInfo?.userId === userId
+  } catch {
+    return false
   }
-  
-  return false
 }
 
 /**
@@ -114,28 +104,41 @@ export const isRoomCreator = (roomId: string, userId: string): boolean => {
  */
 const saveCreatorInfo = async (roomId: string, info: CreatorInfo): Promise<void> => {
   const storageKey = `chitchatter_creator_${roomId}`
+  const passwordKey = `chitchatter_room_password_${roomId}`
   
   try {
-    // 获取房间密码用于加密
-    const password = sessionStorage.getItem(`chitchatter_room_password_${roomId}`)
-    if (password) {
-      const { encryptWithPassword } = await import('services/Encryption')
-      const encrypted = await encryptWithPassword(
-        JSON.stringify(info),
-        password,
-        `creator-${roomId}`
-      )
-      localStorage.setItem(storageKey, encrypted)
-      console.log('✅ 管理员信息已加密存储')
-    } else {
-      // 降级到明文存储（不推荐）
-      localStorage.setItem(storageKey, JSON.stringify(info))
-      console.warn('⚠️ 管理员信息明文存储（无密码）')
+    // 先尝试从sessionStorage获取密码
+    let password = sessionStorage.getItem(passwordKey)
+    
+    // 如果sessionStorage没有，尝试从localStorage获取
+    if (!password) {
+      password = localStorage.getItem(passwordKey)
     }
+    
+    // 如果都没有，生成一个基于roomId的密码
+    if (!password) {
+      password = `room_${roomId}_${Date.now()}`
+      localStorage.setItem(passwordKey, password)
+      console.log('✅ 生成并保存房间密码')
+    } else {
+      // 确保密码也保存到localStorage
+      localStorage.setItem(passwordKey, password)
+    }
+    
+    const { encryptWithPassword } = await import('services/Encryption')
+    const encrypted = await encryptWithPassword(
+      JSON.stringify(info),
+      password,
+      `creator-${roomId}`
+    )
+    localStorage.setItem(storageKey, encrypted)
+    
+    // 设置session标记
+    sessionStorage.setItem(`chitchatter_session_creator_${roomId}`, 'true')
+    console.log('✅ 管理员信息已加密存储')
   } catch (error) {
     console.error('❌ 管理员信息存储失败:', error)
-    // 降级到明文存储
-    localStorage.setItem(storageKey, JSON.stringify(info))
+    throw error
   }
 }
 
@@ -145,13 +148,26 @@ const saveCreatorInfo = async (roomId: string, info: CreatorInfo): Promise<void>
 const loadCreatorInfo = async (roomId: string): Promise<CreatorInfo | null> => {
   try {
     const storageKey = `chitchatter_creator_${roomId}`
+    const passwordKey = `chitchatter_room_password_${roomId}`
     const stored = localStorage.getItem(storageKey)
+    
     if (!stored) {
       console.log('[管理员恢复] 未找到存储数据')
       return null
     }
     
-    const password = sessionStorage.getItem(`chitchatter_room_password_${roomId}`)
+    // 先尝试从localStorage获取密码
+    let password = localStorage.getItem(passwordKey)
+    
+    // 如果localStorage没有，尝试从sessionStorage获取
+    if (!password) {
+      password = sessionStorage.getItem(passwordKey)
+      if (password) {
+        // 将密码保存到localStorage以便持久化
+        localStorage.setItem(passwordKey, password)
+      }
+    }
+    
     console.log('[管理员恢复] 密码状态:', password ? '存在' : '不存在')
     
     if (password) {
@@ -159,31 +175,18 @@ const loadCreatorInfo = async (roomId: string): Promise<CreatorInfo | null> => {
         const { decryptWithPassword } = await import('services/Encryption')
         const decrypted = await decryptWithPassword(stored, password, `creator-${roomId}`)
         const info = JSON.parse(decrypted)
-        console.log('[管理员恢复] 解密成功')
+        
+        // 恢复session标记
+        sessionStorage.setItem(`chitchatter_session_creator_${roomId}`, 'true')
+        console.log('[管理员恢复] 解密成功，已恢复session标记')
         return info
       } catch (decryptError) {
         console.error('[管理员恢复] 解密失败:', decryptError)
-        
-        // 尝试明文解析（兼容旧数据）
-        try {
-          const info = JSON.parse(stored)
-          console.log('[管理员恢复] 明文解析成功（兼容模式）')
-          return info
-        } catch (parseError) {
-          console.error('[管理员恢复] 明文解析也失败:', parseError)
-          return null
-        }
-      }
-    } else {
-      // 无密码，尝试明文解析
-      try {
-        const info = JSON.parse(stored)
-        console.log('[管理员恢复] 明文解析成功（无密码）')
-        return info
-      } catch (parseError) {
-        console.error('[管理员恢复] 明文解析失败:', parseError)
         return null
       }
+    } else {
+      console.log('[管理员恢复] 无密码，无法解密')
+      return null
     }
   } catch (error) {
     console.error('[管理员恢复] 加载管理员信息失败:', error)
