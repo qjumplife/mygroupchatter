@@ -330,7 +330,7 @@ export function useRoom(
 
     setRoomId(roomId)
     
-    // 保存公共房间到历史
+    // 公共房间直接添加到历史（无需特殊权限）
     if (!isPrivate) {
       ;(async () => {
         const { addRoomToHistory } = await import('services/RoomHistory')
@@ -1242,9 +1242,8 @@ export function useRoom(
 
     ;(async () => {
       try {
-        // 保存到房间历史
-        const { addRoomToHistory } = await import('services/RoomHistory')
-        addRoomToHistory(roomId, password)
+        // 保存到房间历史（只有在成功初始化后才添加）
+        // 这里不添加，等待初始化成功后再添加
         
         // 确保房间密码已保存到sessionStorage用于加密存储
         if (password && !sessionStorage.getItem(`chitchatter_room_password_${roomId}`)) {
