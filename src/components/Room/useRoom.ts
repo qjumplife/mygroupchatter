@@ -807,7 +807,7 @@ export function useRoom(
               const receivedCreatedTime = new Date(groupClaimData.createdAt).getTime()
               
               if (receivedCreatedTime < myCreatedTime) {
-                console.log('[GROUP_CLAIM] 对方更早，主动降级')
+                console.log('[GROUP_CLAIM] 管理员权限失效，主动降级')
                 
                 // 立即强制退出房间
                 peerRoom.leaveRoom()
@@ -824,16 +824,16 @@ export function useRoom(
                 // 立即停止当前组件的所有操作
                 setIsInitializing(false)
                 
-                // 弹出邀请码输入框
-                const inviteKey = prompt('你的管理员权限已失效。\n\n请输入邀请码重新加入房间，或点击取消退出房间：')
+                // 直接弹出邀请码输入框
+                const inviteKey = prompt('请输入邀请码：')
                 
                 if (inviteKey && inviteKey.trim()) {
                   // 用户输入了邀请码，保存并刷新页面
                   sessionStorage.setItem(`invite_key_${roomId}`, inviteKey.trim())
                   window.location.reload()
                 } else {
-                  // 用户取消或未输入，跳转到主页
-                  window.location.href = '/'
+                  // 用户取消或未输入，退出当前房间并刷新
+                  window.location.reload()
                 }
               }
             }

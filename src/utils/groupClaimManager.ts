@@ -205,7 +205,7 @@ export class GroupClaimManager {
       const receivedCreatedTime = new Date(groupClaim.createdAt).getTime()
       
       if (receivedCreatedTime < localCreatedTime) {
-        console.log('[GROUP_CLAIM_MANAGER] 🔄 检测到更早的管理员，立即降级')
+        console.log('[GROUP_CLAIM_MANAGER] 🔄 管理员权限失效，立即降级')
         
         // 彻底清除所有数据
         const roomId = this.localGroupClaim.roomId
@@ -241,16 +241,16 @@ export class GroupClaimManager {
           console.error('[GROUP_CLAIM_MANAGER] 移除房间历史失败:', error)
         }
         
-        // 弹出邀请码输入框
-        const inviteKey = prompt('你的管理员权限已失效。\n\n请输入邀请码重新加入房间，或点击取消退出房间：')
+        // 直接弹出邀请码输入框
+        const inviteKey = prompt('请输入邀请码：')
         
         if (inviteKey && inviteKey.trim()) {
           // 用户输入了邀请码，保存并刷新页面
           sessionStorage.setItem(`invite_key_${roomId}`, inviteKey.trim())
           window.location.reload()
         } else {
-          // 用户取消或未输入，跳转到主页
-          window.location.href = '/'
+          // 用户取消或未输入，退出当前房间并刷新
+          window.location.reload()
         }
         
         return // 立即返回，不执行后续逻辑
