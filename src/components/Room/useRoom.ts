@@ -1307,21 +1307,7 @@ export function useRoom(
           return
         }
 
-        // 3. 无本地信息，提示输入邀请码
-        console.log('[初始化] 无本地信息，提示输入邀请码')
-        const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
-        if (!storedInviteKey) {
-          // 延迟弹窗，等待 UI 渲染完成
-          setTimeout(() => {
-            const inviteKey = prompt('请输入邀请密钥：')
-            if (inviteKey) {
-              sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
-              console.log('[初始化] 邀请码已保存，等待 peer 连接')
-            } else {
-              showAlert('需要邀请码才能加入私有房间', { severity: 'warning' })
-            }
-          }, 500)
-        }
+        // 3. 无本地信息，等待 5 秒看是否有管理员
       } catch (error) {
         console.error('初始化权限系统失败:', error)
       }
@@ -1333,7 +1319,10 @@ export function useRoom(
     if (!isPrivate || contentKey || myCreatorClaim || isRoomCreator) return
 
     const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
-    if (storedInviteKey) return
+    if (storedInviteKey) {
+      console.log('[竞争] 已有邀请码，跳过竞争')
+      return
+    }
 
     // 检查是否有本地创建者或验证信息
     ;(async () => {
@@ -1407,6 +1396,14 @@ export function useRoom(
           showAlert('你是房间管理员', { severity: 'success' })
         } else {
           showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
+          // 提示输入邀请码
+          setTimeout(() => {
+            const inviteKey = prompt('请输入邀请密钥：')
+            if (inviteKey) {
+              sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
+              showAlert('邀请码已保存，请等待其他用户加入后自动验证', { severity: 'info' })
+            }
+          }, 500)
         }
       }, 5000)
     })()
