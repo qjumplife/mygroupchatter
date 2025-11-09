@@ -9,13 +9,33 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import Chip from '@mui/material/Chip'
 import { getRoomHistory, removeRoomFromHistory, RoomHistoryItem } from 'services/RoomHistory'
-import { isCreator } from 'services/Authority'
+import { isRoomCreator } from 'services/GroupClaimService'
 
 export const RoomHistoryList = () => {
   const [history, setHistory] = useState<RoomHistoryItem[]>([])
+  const [creatorStatus, setCreatorStatus] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    setHistory(getRoomHistory())
+    const loadHistory = async () => {
+      const historyData = getRoomHistory()
+      setHistory(historyData)
+      
+      // 检查每个房间的管理员状态
+      const status: Record<string, boolean> = {}
+      for (const item of historyData) {
+        try {
+          // 使用一个默认的userId，实际上应该从上下文获取
+          const userId = localStorage.getItem('chitchatter_user_id') || 'unknown'
+          status[item.roomId] = await isRoomCreator(item.roomId, userId)
+        } catch (error) {
+          console.error('检查管理员状态失败:', error)
+          status[item.roomId] = false
+        }
+      }
+      setCreatorStatus(status)
+    }
+    
+    loadHistory()
   }, [])
 
   const handleDelete = (roomId: string) => {
@@ -97,7 +117,7 @@ export const RoomHistoryList = () => {
                   <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                     {item.roomId.length > 20 ? `${item.roomId.slice(0, 8)}...${item.roomId.slice(-4)}` : item.roomId}
                   </Typography>
-                  {isCreator(item.roomId) && <Chip label="管理员" size="small" color="primary" />}
+                  {creatorStatus[item.roomId] && <Chip label="管理员" size="small" color="primary" />}
                   {item.password && <Chip label="私有" size="small" />}
                 </Box>
               }
