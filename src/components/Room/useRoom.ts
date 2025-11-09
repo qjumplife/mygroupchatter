@@ -677,6 +677,8 @@ export function useRoom(
               const inviteKeyHash = await sha256(storedInviteKey)
               await saveVerifiedUser(roomId, userId, decryptedContentKey, inviteKeyHash)
               
+
+              
               // 存储临时信息，等待管理员上线时发送
               const tempInfo = {
                 hashKi: inviteKeyHash,
@@ -756,13 +758,17 @@ export function useRoom(
                 setContentKey(null)
                 setGroupClaim(groupClaimData)
                 
-                // 清除本地存储的管理员数据
+                // 清除所有本地存储的相关数据
                 sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
                 localStorage.removeItem(`chitchatter_creator_${roomId}`)
                 localStorage.removeItem(`chitchatter_room_password_${roomId}`)
                 localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
                 
-                console.log('[GROUP_CLAIM] 已清除本地管理员数据')
+                // 清除用户验证信息（如果存在）
+                localStorage.removeItem(`chitchatter_verified_${roomId}_${userId}`)
+                localStorage.removeItem(`chitchatter_invite_hash_${roomId}_${userId}`)
+                
+                console.log('[GROUP_CLAIM] 已清除所有本地数据，成为新用户')
                 showAlert('检测到更早的管理员，已降级为普通用户', { severity: 'warning' })
                 
                 // 提示输入邀请码

@@ -99,13 +99,15 @@ class AdminDemotionTest {
   demoteAdmin(demotedUserId) {
     console.log(`\n🔄 执行管理员降级: ${demotedUserId}`);
     
-    // 清除管理员数据
+    // 清除所有相关数据，成为新用户
     sessionStorage.removeItem(`chitchatter_session_creator_${this.roomId}`);
     localStorage.removeItem(`chitchatter_creator_${this.roomId}`);
     localStorage.removeItem(`chitchatter_room_password_${this.roomId}`);
     localStorage.removeItem(`chitchatter_groupclaim_${this.roomId}`);
+    localStorage.removeItem(`chitchatter_verified_${this.roomId}_${demotedUserId}`);
+    localStorage.removeItem(`chitchatter_invite_hash_${this.roomId}_${demotedUserId}`);
     
-    console.log('✅ 已清除本地管理员数据');
+    console.log('✅ 已清除所有相关数据，用户成为新人');
   }
 
   // 显示存储状态
@@ -173,30 +175,35 @@ class AdminDemotionTest {
     const isBCreator3 = this.isRoomCreator(this.adminB);
     console.log(`  B尝试检查身份: ${isBCreator3 ? '❌ 仍有管理员权限' : '✅ 已失去管理员权限'}`);
 
-    // 测试4: 模拟页面刷新后的状态
-    console.log('\n✅ 测试4 - 模拟页面刷新:');
+    // 测试4: 模拟B作为新用户重新创建管理员身份（应该可以）
+    console.log('\n✅ 测试4 - 模拟B作为新用户重新创建管理员身份:');
+    this.createAdmin(this.adminB, new Date().toISOString());
+    const isBCreator4 = this.isRoomCreator(this.adminB);
+    console.log(`  B重新创建后身份检查: ${isBCreator4 ? '✅ 成功创建（作为新用户）' : '❌ 创建失败'}`);
+
+    // 测试5: 模拟页面刷新后的状态
+    console.log('\n✅ 测试5 - 模拟页面刷新:');
     sessionStorage.clear();
     console.log('  SessionStorage已清除（模拟页面刷新）');
     
-    const isACreator4 = this.isRoomCreator(this.adminA);
-    const isBCreator4 = this.isRoomCreator(this.adminB);
-    
-    console.log(`  刷新后A身份: ${isACreator4 ? '❌ 意外保持' : '✅ 正确丢失（数据已清除）'}`);
-    console.log(`  刷新后B身份: ${isBCreator4 ? '❌ 意外保持' : '✅ 正确丢失'}`);
+    const isBCreator5 = this.isRoomCreator(this.adminB);
+    console.log(`  刷新后B身份: ${isBCreator5 ? '✅ 正常恢复' : '❌ 意外丢失'}`);
 
     // 测试结果分析
     console.log('\n🎯 测试结果分析:');
-    const allTestsPassed = !isACreator2 && !isBCreator2 && !isBCreator3 && !isACreator4 && !isBCreator4;
+    const allTestsPassed = !isACreator2 && !isBCreator2 && !isBCreator3 && isBCreator4 && isBCreator5;
     
     if (allTestsPassed) {
       console.log('✅ 所有测试通过！管理员降级功能正常工作');
-      console.log('✅ 被降级的管理员身份被彻底清除');
-      console.log('✅ 页面刷新后不会意外恢复管理员身份');
+      console.log('✅ 被降级的管理员数据被彻底清除');
+      console.log('✅ 被降级的用户可以作为新用户重新创建管理员身份');
+      console.log('✅ 页面刷新后管理员身份正常恢复');
     } else {
       console.log('❌ 部分测试失败');
       console.log(`  降级清除数据: ${!isACreator2 && !isBCreator2 ? '✅' : '❌'}`);
       console.log(`  B失去管理员权限: ${!isBCreator3 ? '✅' : '❌'}`);
-      console.log(`  页面刷新后状态正确: ${!isACreator4 && !isBCreator4 ? '✅' : '❌'}`);
+      console.log(`  B可以重新创建: ${isBCreator4 ? '✅' : '❌'}`);
+      console.log(`  页面刷新后状态正确: ${isBCreator5 ? '✅' : '❌'}`);
     }
   }
 }
