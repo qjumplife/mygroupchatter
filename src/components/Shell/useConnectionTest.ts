@@ -95,8 +95,8 @@ export const useConnectionTest = () => {
     ;(async () => {
       while (true) {
         const connectionTest = await checkRtcConnection()
-        await sleep(rtcPollInterval)
         connectionTest.destroyRtcPeerConnectionTest()
+        await sleep(rtcPollInterval)
       }
     })()
     ;(async () => {
