@@ -180,7 +180,7 @@ const RoomCore = ({
                   height: landscape ? '100%' : '40%',
                 }}
               >
-                {roomContextValue.isRoomCreator && <InviteManagerPanel />}
+                {!roomContextValue.isInitializing && roomContextValue.isRoomCreator && <InviteManagerPanel />}
                 <ChatTranscript
                   messageLog={messageLog}
                   userId={userId}

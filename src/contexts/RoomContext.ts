@@ -32,6 +32,7 @@ export interface RoomContextProps {
   setIsRoomCreator: Dispatch<SetStateAction<boolean>>
   creatorPrivateKey: CryptoKey | null
   setCreatorPrivateKey: Dispatch<SetStateAction<CryptoKey | null>>
+  isInitializing: boolean
   broadcastGroupClaim: (gc: GroupClaim) => void
 }
 
@@ -62,5 +63,6 @@ export const RoomContext = createContext<RoomContextProps>({
   setIsRoomCreator: () => {},
   creatorPrivateKey: null,
   setCreatorPrivateKey: () => {},
+  isInitializing: true,
   broadcastGroupClaim: () => {},
 })

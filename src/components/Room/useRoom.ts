@@ -181,6 +181,7 @@ export function useRoom(
   const [contentKey, setContentKey] = useState<CryptoKey | null>(null)
   const [isRoomCreator, setIsRoomCreator] = useState(false)
   const [creatorPrivateKey, setCreatorPrivateKey] = useState<CryptoKey | null>(null)
+  const [isInitializing, setIsInitializing] = useState(true) // 初始化状态
   const contentKeyRef = useRef<CryptoKey | null>(null)
   const sendGroupClaimRef = useRef<((gc: GroupClaim) => void) | null>(null)
   const processedDirectMessageIds = useRef<Set<string>>(new Set())
@@ -218,6 +219,7 @@ export function useRoom(
       setIsRoomCreator,
       creatorPrivateKey,
       setCreatorPrivateKey,
+      isInitializing,
       broadcastGroupClaim: (gc: GroupClaim) => {
         console.log('[broadcastGroupClaim] 广播 GroupClaim:', {
           version: gc.version,
@@ -256,6 +258,7 @@ export function useRoom(
       setIsRoomCreator,
       creatorPrivateKey,
       setCreatorPrivateKey,
+      isInitializing,
     ]
   )
 
@@ -1167,7 +1170,10 @@ export function useRoom(
 
   // 初始化权限控制系统
   useEffect(() => {
-    if (!isPrivate) return
+    if (!isPrivate) {
+      setIsInitializing(false)
+      return
+    }
 
     ;(async () => {
       try {
@@ -1207,6 +1213,7 @@ export function useRoom(
             }
             
             showAlert('管理员身份已恢复', { severity: 'success' })
+            setIsInitializing(false)
             return
           } else {
             console.warn('[管理员恢复] 恢复失败，可能是密码问题')
@@ -1231,10 +1238,11 @@ export function useRoom(
           }
           
           showAlert('欢迎回来！已自动登录', { severity: 'success' })
-          return
         }
       } catch (error) {
         console.error('初始化权限系统失败:', error)
+      } finally {
+        setIsInitializing(false)
       }
     })()
   }, [roomId, password, isPrivate, userId, showAlert])
