@@ -402,13 +402,7 @@ export function useRoom(
 
         setPeerList(prev => [...prev, newPeer])
         sendTypingStatusChange({ isTyping }, peerId)
-        // 私有房间跳过 Peer 身份验证（已有邀请码验证）
-        if (!isPrivate) {
-          verifyPeer(newPeer)
-        } else {
-          // 私有房间直接标记为已验证
-          updatePeer(peerId, { verificationState: PeerVerificationState.VERIFIED })
-        }
+        verifyPeer(newPeer)
       } else {
         const oldUsername =
           peerList[peerIndex].customUsername || getPeerName(peerUserId)
