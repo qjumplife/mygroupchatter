@@ -55,37 +55,44 @@ import { usePeerVerification } from './usePeerVerification'
 const clearAllRoomData = async (roomId: string, userId: string) => {
   console.log('[clearAllRoomData] 开始清除所有数据')
   
-  // 清除sessionStorage
-  sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
-  sessionStorage.removeItem(`chitchatter_room_password_${roomId}`)
-  sessionStorage.removeItem(`invite_key_${roomId}`)
+  // 清除sessionStorage中的所有相关数据
+  const sessionKeys = Object.keys(sessionStorage)
+  sessionKeys.forEach(key => {
+    if (key.includes(roomId)) {
+      sessionStorage.removeItem(key)
+      console.log('[clearAllRoomData] 清除session键:', key)
+    }
+  })
   
-  // 清除localStorage中的管理员数据
-  localStorage.removeItem(`chitchatter_creator_${roomId}`)
-  localStorage.removeItem(`chitchatter_room_password_${roomId}`)
-  localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
+  // 清除localStorage中的所有相关数据
+  const localKeys = Object.keys(localStorage)
+  localKeys.forEach(key => {
+    if (key.includes(roomId)) {
+      localStorage.removeItem(key)
+      console.log('[clearAllRoomData] 清除local键:', key)
+    }
+  })
   
-  // 清除用户验证信息
-  localStorage.removeItem(`chitchatter_verified_${roomId}_${userId}`)
-  localStorage.removeItem(`chitchatter_invite_hash_${roomId}_${userId}`)
+  // 特别清除管理员相关数据
+  const adminKeys = [
+    `chitchatter_creator_${roomId}`,
+    `chitchatter_session_creator_${roomId}`,
+    `chitchatter_room_password_${roomId}`,
+    `chitchatter_groupclaim_${roomId}`,
+    `chitchatter_verified_${roomId}_${userId}`,
+    `chitchatter_invite_hash_${roomId}_${userId}`,
+    `invite_key_${roomId}`
+  ]
   
-  // 清除临时状态信息
-  const tempKeys = Object.keys(localStorage).filter(key => 
-    key.startsWith(`chitchatter_temp_status_${roomId}_`)
-  )
-  tempKeys.forEach(key => localStorage.removeItem(key))
+  adminKeys.forEach(key => {
+    localStorage.removeItem(key)
+    sessionStorage.removeItem(key)
+    console.log('[clearAllRoomData] 强制清除管理员键:', key)
+  })
   
   // 清除邀请码历史记录
   localStorage.removeItem('chitchatter_invite_history')
   localStorage.removeItem('chitchatter_save_invite_history')
-  
-  // 强制清除所有包含roomId的键
-  const allKeys = Object.keys(localStorage)
-  const roomKeys = allKeys.filter(key => key.includes(roomId))
-  roomKeys.forEach(key => {
-    localStorage.removeItem(key)
-    console.log('[clearAllRoomData] 清除键:', key)
-  })
   
   // 从房间历史中移除
   try {
@@ -802,11 +809,14 @@ export function useRoom(
               if (receivedCreatedTime < myCreatedTime) {
                 console.log('[GROUP_CLAIM] 对方更早，主动降级')
                 
+                // 立即强制退出房间
+                peerRoom.leaveRoom()
+                
                 // 彻底清除管理员身份和数据
                 setIsRoomCreator(false)
                 setCreatorPrivateKey(null)
                 setContentKey(null)
-                setGroupClaim(groupClaimData)
+                setGroupClaim(null)
                 
                 // 调用彻底清除函数
                 await clearAllRoomData(roomId, userId)
@@ -814,21 +824,16 @@ export function useRoom(
                 // 立即停止当前组件的所有操作
                 setIsInitializing(false)
                 
-                // 强制退出房间并刷新
-                showAlert('检测到更早的管理员，已降级为群外新人', { severity: 'warning' })
+                // 显示警告并立即跳转
+                alert('检测到更早的管理员，你已被降级为群外新人！')
                 
-                // 立即弹出邀请码输入框
+                // 立即跳转到主页
+                window.location.href = '/'
+                
+                // 如果跳转失败，强制刷新
                 setTimeout(() => {
-                  const inviteKey = prompt('你已被降级为群外新人，请输入邀请密钥以重新加入房间：')
-                  if (inviteKey) {
-                    sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
-                    // 刷新页面重新验证
-                    window.location.reload()
-                  } else {
-                    // 强制跳转到主页
-                    window.location.href = '/'
-                  }
-                }, 500)
+                  window.location.reload()
+                }, 100)
               }
             }
             return

@@ -92,27 +92,47 @@ export const restoreCreatorIdentity = async (
  */
 export const isRoomCreator = async (roomId: string, userId: string): Promise<boolean> => {
   try {
+    // 首先检查session标记（最重要的防止降级后恢复）
+    const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
+    if (sessionCreator !== 'true') {
+      console.log('[isRoomCreator] session标记不存在或无效，拒绝管理员身份')
+      // 如果没有session标记，清除所有相关数据
+      localStorage.removeItem(`chitchatter_creator_${roomId}`)
+      localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+      localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
+      return false
+    }
+    
     // 检查是否有管理员数据存储
     const storageKey = `chitchatter_creator_${roomId}`
     const stored = localStorage.getItem(storageKey)
     if (!stored) {
       console.log('[isRoomCreator] 未找到管理员数据')
-      return false
-    }
-    
-    // 检查session标记（防止降级后恢复）
-    const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
-    if (sessionCreator !== 'true') {
-      console.log('[isRoomCreator] session标记不存在或无效')
+      // 清除session标记
+      sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
       return false
     }
     
     const creatorInfo = await loadCreatorInfo(roomId)
-    const isCreator = creatorInfo?.userId === userId
-    console.log('[isRoomCreator] 检查结果:', { isCreator, userId: userId?.substring(0, 8) + '...', creatorUserId: creatorInfo?.userId?.substring(0, 8) + '...' })
-    return isCreator
+    if (!creatorInfo || creatorInfo.userId !== userId) {
+      console.log('[isRoomCreator] 用户ID不匹配，清除数据')
+      // 清除所有相关数据
+      sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+      localStorage.removeItem(storageKey)
+      localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+      localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
+      return false
+    }
+    
+    console.log('[isRoomCreator] 验证通过，确认管理员身份')
+    return true
   } catch (error) {
     console.error('[isRoomCreator] 检查失败:', error)
+    // 发生错误时清除所有相关数据
+    sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+    localStorage.removeItem(`chitchatter_creator_${roomId}`)
+    localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+    localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
     return false
   }
 }
