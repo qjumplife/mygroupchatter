@@ -210,8 +210,29 @@ export const restoreCreatorAuthority = async (
  * 检查是否是房间创建者
  */
 export const isCreator = (roomId: string): boolean => {
+  // 首先检查session标记（防止降级后恢复）
+  const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
+  if (sessionCreator !== 'true') {
+    console.log('[isCreator] session标记不存在或无效，拒绝管理员身份')
+    // 如果没有session标记，清除所有相关数据
+    const storageKey = `chitchatter_creator_${roomId}`
+    localStorage.removeItem(storageKey)
+    localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+    localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
+    return false
+  }
+  
   const storageKey = `chitchatter_creator_${roomId}`
-  return localStorage.getItem(storageKey) !== null
+  const hasCreatorData = localStorage.getItem(storageKey) !== null
+  
+  if (!hasCreatorData) {
+    // 如果没有创建者数据，清除session标记
+    sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+    return false
+  }
+  
+  console.log('[isCreator] 验证通过，确认管理员身份')
+  return true
 }
 
 /**

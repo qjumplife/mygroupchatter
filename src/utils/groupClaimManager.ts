@@ -205,8 +205,54 @@ export class GroupClaimManager {
       const receivedCreatedTime = new Date(groupClaim.createdAt).getTime()
       
       if (receivedCreatedTime < localCreatedTime) {
-        this.localGroupClaim = groupClaim
-        console.log('[GROUP_CLAIM_MANAGER] 🔄 替换为更早的GroupClaim')
+        console.log('[GROUP_CLAIM_MANAGER] 🔄 检测到更早的管理员，立即降级')
+        
+        // 彻底清除所有数据
+        const roomId = this.localGroupClaim.roomId
+        const creatorId = this.localGroupClaim.creatorId
+        
+        // 清除本地GroupClaim
+        this.localGroupClaim = null
+        
+        // 清除所有localStorage数据
+        const allKeys = Object.keys(localStorage)
+        allKeys.forEach(key => {
+          if (key.includes(roomId)) {
+            localStorage.removeItem(key)
+            console.log('[GROUP_CLAIM_MANAGER] 清除localStorage键:', key)
+          }
+        })
+        
+        // 清除所有sessionStorage数据
+        const sessionKeys = Object.keys(sessionStorage)
+        sessionKeys.forEach(key => {
+          if (key.includes(roomId)) {
+            sessionStorage.removeItem(key)
+            console.log('[GROUP_CLAIM_MANAGER] 清除sessionStorage键:', key)
+          }
+        })
+        
+        // 从房间历史中移除
+        try {
+          const { removeRoomFromHistory } = await import('services/RoomHistory')
+          removeRoomFromHistory(roomId)
+          console.log('[GROUP_CLAIM_MANAGER] 已从房间历史中移除')
+        } catch (error) {
+          console.error('[GROUP_CLAIM_MANAGER] 移除房间历史失败:', error)
+        }
+        
+        // 显示警告并立即跳转
+        alert('检测到更早的管理员，你已被降级为群外新人！')
+        
+        // 立即跳转到主页
+        window.location.href = '/'
+        
+        // 如果跳转失败，强制刷新
+        setTimeout(() => {
+          window.location.reload()
+        }, 100)
+        
+        return // 立即返回，不执行后续逻辑
       } else {
         console.log('[GROUP_CLAIM_MANAGER] ⏭️ 保留本地更早的GroupClaim')
       }
