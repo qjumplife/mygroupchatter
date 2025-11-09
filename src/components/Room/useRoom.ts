@@ -49,6 +49,56 @@ import { messageTranscriptSizeLimit } from 'config/messaging'
 
 import { usePeerVerification } from './usePeerVerification'
 
+/**
+ * 彻底清除房间相关的所有数据
+ */
+const clearAllRoomData = async (roomId: string, userId: string) => {
+  console.log('[clearAllRoomData] 开始清除所有数据')
+  
+  // 清除sessionStorage
+  sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+  sessionStorage.removeItem(`chitchatter_room_password_${roomId}`)
+  sessionStorage.removeItem(`invite_key_${roomId}`)
+  
+  // 清除localStorage中的管理员数据
+  localStorage.removeItem(`chitchatter_creator_${roomId}`)
+  localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+  localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
+  
+  // 清除用户验证信息
+  localStorage.removeItem(`chitchatter_verified_${roomId}_${userId}`)
+  localStorage.removeItem(`chitchatter_invite_hash_${roomId}_${userId}`)
+  
+  // 清除临时状态信息
+  const tempKeys = Object.keys(localStorage).filter(key => 
+    key.startsWith(`chitchatter_temp_status_${roomId}_`)
+  )
+  tempKeys.forEach(key => localStorage.removeItem(key))
+  
+  // 清除邀请码历史记录
+  localStorage.removeItem('chitchatter_invite_history')
+  localStorage.removeItem('chitchatter_save_invite_history')
+  
+  // 强制清除所有包含roomId的键
+  const allKeys = Object.keys(localStorage)
+  const roomKeys = allKeys.filter(key => key.includes(roomId))
+  roomKeys.forEach(key => {
+    localStorage.removeItem(key)
+    console.log('[clearAllRoomData] 清除键:', key)
+  })
+  
+  // 从房间历史中移除
+  try {
+    const { removeRoomFromHistory } = await import('services/RoomHistory')
+    removeRoomFromHistory(roomId)
+    console.log('[clearAllRoomData] 已从房间历史中移除')
+  } catch (error) {
+    console.error('[clearAllRoomData] 移除房间历史失败:', error)
+  }
+  
+  console.log('[clearAllRoomData] 数据清除完成')
+}
+
 interface UseRoomConfig {
   roomId: string
   userId: string
@@ -758,51 +808,26 @@ export function useRoom(
                 setContentKey(null)
                 setGroupClaim(groupClaimData)
                 
-                // 清除所有本地存储的相关数据
-                sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
-                localStorage.removeItem(`chitchatter_creator_${roomId}`)
-                localStorage.removeItem(`chitchatter_room_password_${roomId}`)
-                localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
-                
-                // 清除用户验证信息（如果存在）
-                localStorage.removeItem(`chitchatter_verified_${roomId}_${userId}`)
-                localStorage.removeItem(`chitchatter_invite_hash_${roomId}_${userId}`)
-                
-                // 清除临时状态信息
-                const tempKeys = Object.keys(localStorage).filter(key => 
-                  key.startsWith(`chitchatter_temp_status_${roomId}_`)
-                )
-                tempKeys.forEach(key => localStorage.removeItem(key))
-                
-                // 清除邀请码历史记录
-                localStorage.removeItem('chitchatter_invite_history')
-                localStorage.removeItem('chitchatter_save_invite_history')
-                
-                // 从房间历史中移除该房间（因为现在是群外人）
-                ;(async () => {
-                  try {
-                    const { removeRoomFromHistory } = await import('services/RoomHistory')
-                    removeRoomFromHistory(roomId)
-                    console.log('[GROUP_CLAIM] 已从房间历史中移除')
-                  } catch (error) {
-                    console.error('[GROUP_CLAIM] 移除房间历史失败:', error)
-                  }
-                })()
-                
-                console.log('[GROUP_CLAIM] 已清除所有本地数据，成为群外新人')
-                console.log('[GROUP_CLAIM] 降级操作完成，即将跳转到主页')
-                
-                // 立即检查主页isCreator状态
-                const { isCreator } = await import('services/Authority')
-                console.log('[GROUP_CLAIM] 主页isCreator状态:', isCreator(roomId))
+                // 调用彻底清除函数
+                await clearAllRoomData(roomId, userId)
                 
                 // 立即停止当前组件的所有操作
                 setIsInitializing(false)
+                
+                // 强制退出房间并刷新
                 showAlert('检测到更早的管理员，已降级为群外新人', { severity: 'warning' })
                 
-                // 立即跳转到主页，避免继续操作
+                // 立即弹出邀请码输入框
                 setTimeout(() => {
-                  window.location.href = '/'
+                  const inviteKey = prompt('你已被降级为群外新人，请输入邀请密钥以重新加入房间：')
+                  if (inviteKey) {
+                    sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
+                    // 刷新页面重新验证
+                    window.location.reload()
+                  } else {
+                    // 强制跳转到主页
+                    window.location.href = '/'
+                  }
                 }, 500)
               }
             }

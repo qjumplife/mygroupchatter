@@ -96,12 +96,23 @@ export const isRoomCreator = async (roomId: string, userId: string): Promise<boo
     const storageKey = `chitchatter_creator_${roomId}`
     const stored = localStorage.getItem(storageKey)
     if (!stored) {
+      console.log('[isRoomCreator] 未找到管理员数据')
+      return false
+    }
+    
+    // 检查session标记（防止降级后恢复）
+    const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
+    if (sessionCreator !== 'true') {
+      console.log('[isRoomCreator] session标记不存在或无效')
       return false
     }
     
     const creatorInfo = await loadCreatorInfo(roomId)
-    return creatorInfo?.userId === userId
-  } catch {
+    const isCreator = creatorInfo?.userId === userId
+    console.log('[isRoomCreator] 检查结果:', { isCreator, userId: userId?.substring(0, 8) + '...', creatorUserId: creatorInfo?.userId?.substring(0, 8) + '...' })
+    return isCreator
+  } catch (error) {
+    console.error('[isRoomCreator] 检查失败:', error)
     return false
   }
 }

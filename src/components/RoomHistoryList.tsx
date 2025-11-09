@@ -19,7 +19,47 @@ export const RoomHistoryList = () => {
   }, [])
 
   const handleDelete = (roomId: string) => {
+    console.log('[主页删除] 开始删除房间:', roomId)
+    
+    // 从房间历史中移除
     removeRoomFromHistory(roomId)
+    
+    // 清除所有相关的localStorage数据
+    const allKeys = Object.keys(localStorage)
+    const roomKeys = allKeys.filter(key => key.includes(roomId))
+    roomKeys.forEach(key => {
+      localStorage.removeItem(key)
+      console.log('[主页删除] 清除localStorage键:', key)
+    })
+    
+    // 清除sessionStorage中的相关数据
+    const sessionKeys = Object.keys(sessionStorage)
+    const roomSessionKeys = sessionKeys.filter(key => key.includes(roomId))
+    roomSessionKeys.forEach(key => {
+      sessionStorage.removeItem(key)
+      console.log('[主页删除] 清除sessionStorage键:', key)
+    })
+    
+    // 特别清除管理员相关数据
+    const creatorKeys = [
+      `chitchatter_creator_${roomId}`,
+      `chitchatter_session_creator_${roomId}`,
+      `chitchatter_room_password_${roomId}`,
+      `chitchatter_groupclaim_${roomId}`,
+      `invite_key_${roomId}`
+    ]
+    
+    creatorKeys.forEach(key => {
+      localStorage.removeItem(key)
+      sessionStorage.removeItem(key)
+      console.log('[主页删除] 强制清除管理员键:', key)
+    })
+    
+    // 清除邀请码历史
+    localStorage.removeItem('chitchatter_invite_history')
+    localStorage.removeItem('chitchatter_save_invite_history')
+    
+    console.log('[主页删除] 删除完成')
     setHistory(getRoomHistory())
   }
 
