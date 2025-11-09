@@ -92,6 +92,13 @@ export const restoreCreatorIdentity = async (
  */
 export const isRoomCreator = async (roomId: string, userId: string): Promise<boolean> => {
   try {
+    // 检查是否有管理员数据存储
+    const storageKey = `chitchatter_creator_${roomId}`
+    const stored = localStorage.getItem(storageKey)
+    if (!stored) {
+      return false
+    }
+    
     const creatorInfo = await loadCreatorInfo(roomId)
     return creatorInfo?.userId === userId
   } catch {

@@ -749,10 +749,33 @@ export function useRoom(
               
               if (receivedCreatedTime < myCreatedTime) {
                 console.log('[GROUP_CLAIM] 对方更早，主动降级')
+                
+                // 彻底清除管理员身份和数据
                 setIsRoomCreator(false)
                 setCreatorPrivateKey(null)
+                setContentKey(null)
                 setGroupClaim(groupClaimData)
-                showAlert('检测到更早的管理员', { severity: 'warning' })
+                
+                // 清除本地存储的管理员数据
+                sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+                localStorage.removeItem(`chitchatter_creator_${roomId}`)
+                localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+                localStorage.removeItem(`chitchatter_groupclaim_${roomId}`)
+                
+                console.log('[GROUP_CLAIM] 已清除本地管理员数据')
+                showAlert('检测到更早的管理员，已降级为普通用户', { severity: 'warning' })
+                
+                // 提示输入邀请码
+                setTimeout(() => {
+                  const inviteKey = prompt('你已被降级为普通用户，请输入邀请密钥以继续使用房间：')
+                  if (inviteKey) {
+                    sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
+                    // 触发验证流程
+                    window.location.reload()
+                  } else {
+                    showAlert('未输入邀请密钥，无法继续使用房间', { severity: 'error' })
+                  }
+                }, 1000)
               }
             }
             return
@@ -777,6 +800,15 @@ export function useRoom(
               if (receivedCreatedTime < myCreatedTime) {
                 setGroupClaim(groupClaimData)
                 console.log('[GROUP_CLAIM] 替换为更早的 GroupClaim')
+                
+                // 如果当前用户曾经是管理员但现在不是，清除相关数据
+                const wasCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`) === 'true'
+                if (wasCreator && groupClaimData.creatorId !== userId) {
+                  console.log('[GROUP_CLAIM] 检测到管理员身份变更，清除本地数据')
+                  sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+                  localStorage.removeItem(`chitchatter_creator_${roomId}`)
+                  localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+                }
               }
             }
           }
