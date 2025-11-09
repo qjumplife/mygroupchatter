@@ -1180,9 +1180,9 @@ export function useRoom(
           sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
         }
         
-        // 1. 检查session标记，如果是管理员尝试恢复
-        const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
-        if (sessionCreator === 'true') {
+        // 1. 检查是否是管理员，尝试恢复管理员身份
+        const isCreator = await checkIsRoomCreator(roomId, userId)
+        if (isCreator) {
           // 确保房间密码已保存到sessionStorage
           if (!sessionStorage.getItem(`chitchatter_room_password_${roomId}`) && password) {
             sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
@@ -1209,8 +1209,7 @@ export function useRoom(
             showAlert('管理员身份已恢复', { severity: 'success' })
             return
           } else {
-            // 恢复失败，清除session标记
-            sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
+            console.warn('[管理员恢复] 恢复失败，可能是密码问题')
           }
         }
         
@@ -1251,8 +1250,8 @@ export function useRoom(
       if (competitionStarted) return
       
       // 检查是否已经是管理员
-      const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
-      if (sessionCreator === 'true') {
+      const isCreator = await checkIsRoomCreator(roomId, userId)
+      if (isCreator) {
         console.log('[竞争] 已是管理员，跳过竞争')
         return
       }
