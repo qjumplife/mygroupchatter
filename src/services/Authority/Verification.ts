@@ -13,12 +13,14 @@ export interface VerificationResult {
 export const verifyInviteKey = async (
   hashKi: string,
   L: AuthorityPackage,
-  publicKey: CryptoKey
+  publicKey?: CryptoKey
 ): Promise<VerificationResult> => {
-  // 1. 验证 L 签名
-  const signatureValid = await verifyAuthorityPackage(L, publicKey)
-  if (!signatureValid) {
-    return { success: false, reason: 'INVALID_SIGNATURE' }
+  // 1. 验证 L 签名（如果有公钥）
+  if (publicKey) {
+    const signatureValid = await verifyAuthorityPackage(L, publicKey)
+    if (!signatureValid) {
+      return { success: false, reason: 'INVALID_SIGNATURE' }
+    }
   }
 
   // 2. 查找匹配的记录

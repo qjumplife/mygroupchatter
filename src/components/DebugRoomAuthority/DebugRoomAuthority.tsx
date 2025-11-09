@@ -4,9 +4,8 @@ import { RoomContext } from 'contexts/RoomContext'
 export const DebugRoomAuthority = () => {
   const {
     isRoomCreator,
-    authorityPackage,
+    groupClaim,
     contentKey,
-    creatorPublicKey,
     creatorPrivateKey,
   } = useContext(RoomContext)
 
@@ -61,12 +60,12 @@ export const DebugRoomAuthority = () => {
             {' '}isRoomCreator: <strong>{String(isRoomCreator)}</strong>
           </div>
           <div>
-            <span style={{ color: authorityPackage ? '#4caf50' : '#f44336' }}>
-              {authorityPackage ? '✅' : '❌'}
+            <span style={{ color: groupClaim ? '#4caf50' : '#f44336' }}>
+              {groupClaim ? '✅' : '❌'}
             </span>
-            {' '}authorityPackage: {authorityPackage ? (
+            {' '}groupClaim: {groupClaim ? (
               <span>
-                v{authorityPackage.version}, {authorityPackage.keyset.length} keys
+                v{groupClaim.version}, {groupClaim.keyset.length} keys
               </span>
             ) : 'null'}
           </div>
@@ -76,12 +75,7 @@ export const DebugRoomAuthority = () => {
             </span>
             {' '}contentKey: {contentKey ? contentKey.type : 'null'}
           </div>
-          <div>
-            <span style={{ color: creatorPublicKey ? '#4caf50' : '#f44336' }}>
-              {creatorPublicKey ? '✅' : '❌'}
-            </span>
-            {' '}creatorPublicKey: {creatorPublicKey ? creatorPublicKey.type : 'null'}
-          </div>
+
           <div>
             <span style={{ color: creatorPrivateKey ? '#4caf50' : '#f44336' }}>
               {creatorPrivateKey ? '✅' : '❌'}
@@ -91,9 +85,9 @@ export const DebugRoomAuthority = () => {
         </div>
       </div>
 
-      {authorityPackage && (
+      {groupClaim && (
         <div style={{ marginBottom: '15px' }}>
-          <strong>Authority Package 详情：</strong>
+          <strong>GroupClaim 详情：</strong>
           <div style={{ 
             marginLeft: '20px', 
             marginTop: '5px',
@@ -102,10 +96,12 @@ export const DebugRoomAuthority = () => {
             borderRadius: '4px',
             fontSize: '12px'
           }}>
-            <div>版本: {authorityPackage.version}</div>
-            <div>时间戳: {authorityPackage.timestamp}</div>
-            <div>密钥数量: {authorityPackage.keyset.length}</div>
-            <div>签名长度: {authorityPackage.signature.length} 字符</div>
+            <div>版本: {groupClaim.version}</div>
+            <div>创建时间: {groupClaim.createdAt}</div>
+            <div>更新时间: {groupClaim.timestamp}</div>
+            <div>创建者: {groupClaim.creatorId.substring(0, 8)}...</div>
+            <div>密钥数量: {groupClaim.keyset.length}</div>
+            <div>签名长度: {groupClaim.signature.length} 字符</div>
           </div>
         </div>
       )}

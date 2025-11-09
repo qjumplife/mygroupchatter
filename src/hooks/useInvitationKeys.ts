@@ -1,13 +1,12 @@
 import { useState, useCallback, useContext } from 'react'
 import { RoomContext } from 'contexts/RoomContext'
-import { InviteKeyRecord, AuthorityPackage } from 'models/authority'
+import { InviteKeyRecord, GroupClaim } from 'models/groupClaim'
 import {
   generateInviteKey,
   sha256,
   encryptContentKey,
   signAuthorityPackage,
 } from 'services/Encryption'
-import { assertAuthorityPackage, assertInviteKeyRecord } from 'utils/authorityValidation'
 
 export interface InviteKeyWithPlaintext extends InviteKeyRecord {
   plaintext?: string // 仅在生成时显示一次
@@ -15,12 +14,12 @@ export interface InviteKeyWithPlaintext extends InviteKeyRecord {
 
 export const useInvitationKeys = () => {
   const {
-    authorityPackage,
-    setAuthorityPackage,
+    groupClaim,
+    setGroupClaim,
     contentKey,
     creatorPrivateKey,
     isRoomCreator,
-    broadcastAuthorityPackage,
+    broadcastGroupClaim,
   } = useContext(RoomContext)
 
   const [isGenerating, setIsGenerating] = useState(false)
@@ -36,7 +35,7 @@ export const useInvitationKeys = () => {
         return null
       }
 
-      if (!contentKey || !creatorPrivateKey || !authorityPackage) {
+      if (!contentKey || !creatorPrivateKey || !groupClaim) {
         setError('缺少必要的密钥或权限信息')
         return null
       }
@@ -59,54 +58,38 @@ export const useInvitationKeys = () => {
           hash,
           expiration: new Date(Date.now() + ttlHours * 3600000).toISOString(),
           status: 'ACTIVE',
-          usedBy: null,
+          usedBy: undefined,
           createdAt: new Date().toISOString(),
+          creatorId: groupClaim.creatorId,
+          roomId: groupClaim.roomId,
+          sequence: groupClaim.keyset.length + 1,
           encryptedContentKey,
         }
-        assertInviteKeyRecord(newRecord, 'generateKey 创建')
 
-        // 5. 更新 L
-        const newL = {
-          roomId: authorityPackage.roomId,
-          version: authorityPackage.version + 1,
+        // 5. 更新 GroupClaim
+        const newGroupClaim: GroupClaim = {
+          ...groupClaim,
+          version: groupClaim.version + 1,
           timestamp: new Date().toISOString(),
-          createdAt: authorityPackage.createdAt,
-          creatorId: authorityPackage.creatorId,
-          keyset: [...authorityPackage.keyset, newRecord],
+          keyset: [...groupClaim.keyset, newRecord],
+          signature: '',
         }
 
         // 6. 签名
-        const signature = await signAuthorityPackage(newL, creatorPrivateKey)
-
-        const newAuthorityPackage: AuthorityPackage = {
-          ...newL,
-          signature,
-        }
+        newGroupClaim.signature = await signAuthorityPackage(newGroupClaim, creatorPrivateKey)
 
         // 7. 更新状态并广播
-        assertAuthorityPackage(newAuthorityPackage, 'generateKey')
-        setAuthorityPackage(newAuthorityPackage)
-        // 持久化到 localStorage（加密）
-        const roomId = window.location.pathname.split('/').pop() || ''
-        if (roomId && authorityPackage) {
-          try {
-            const password = sessionStorage.getItem(`chitchatter_room_password_${roomId}`)
-            if (password) {
-              const { encryptWithPassword } = await import('services/Encryption')
-              const encrypted = await encryptWithPassword(
-                JSON.stringify(newAuthorityPackage),
-                password,
-                `authority-${roomId}`
-              )
-              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
-            } else {
-              localStorage.setItem(`chitchatter_authority_${roomId}`, JSON.stringify(newAuthorityPackage))
-            }
-          } catch {
-            localStorage.setItem(`chitchatter_authority_${roomId}`, JSON.stringify(newAuthorityPackage))
-          }
+        setGroupClaim(newGroupClaim)
+        
+        // 保存到localStorage
+        try {
+          localStorage.setItem(`chitchatter_groupclaim_${groupClaim.roomId}`, JSON.stringify(newGroupClaim))
+          console.log('[邀请码生成] GroupClaim已保存:', newGroupClaim.version)
+        } catch (error) {
+          console.error('[邀请码生成] 保存GroupClaim失败:', error)
         }
-        broadcastAuthorityPackage(newAuthorityPackage)
+        
+        broadcastGroupClaim(newGroupClaim)
 
         // 8. 返回（包含明文密钥，仅显示一次）
         return {
@@ -124,8 +107,9 @@ export const useInvitationKeys = () => {
       isRoomCreator,
       contentKey,
       creatorPrivateKey,
-      authorityPackage,
-      setAuthorityPackage,
+      groupClaim,
+      setGroupClaim,
+      broadcastGroupClaim,
     ]
   )
 
@@ -134,7 +118,7 @@ export const useInvitationKeys = () => {
    */
   const revokeKey = useCallback(
     async (hash: string): Promise<boolean> => {
-      if (!isRoomCreator || !creatorPrivateKey || !authorityPackage) {
+      if (!isRoomCreator || !creatorPrivateKey || !groupClaim) {
         setError('无法吊销密钥')
         return false
       }
@@ -143,52 +127,34 @@ export const useInvitationKeys = () => {
 
       try {
         // 1. 找到记录并修改状态
-        const newKeyset = authorityPackage.keyset.map(record =>
+        const newKeyset = groupClaim.keyset.map(record =>
           record.hash === hash ? { ...record, status: 'REVOKED' as const } : record
         )
 
-        // 2. 更新 L
-        const newL = {
-          roomId: authorityPackage.roomId,
-          version: authorityPackage.version + 1,
+        // 2. 更新 GroupClaim
+        const newGroupClaim: GroupClaim = {
+          ...groupClaim,
+          version: groupClaim.version + 1,
           timestamp: new Date().toISOString(),
-          createdAt: authorityPackage.createdAt,
-          creatorId: authorityPackage.creatorId,
           keyset: newKeyset,
+          signature: '',
         }
 
         // 3. 签名
-        const signature = await signAuthorityPackage(newL, creatorPrivateKey)
-
-        const newAuthorityPackage: AuthorityPackage = {
-          ...newL,
-          signature,
-        }
+        newGroupClaim.signature = await signAuthorityPackage(newGroupClaim, creatorPrivateKey)
 
         // 4. 更新状态并广播
-        assertAuthorityPackage(newAuthorityPackage, 'revokeKey')
-        setAuthorityPackage(newAuthorityPackage)
-        // 持久化到 localStorage（加密）
-        const roomId = window.location.pathname.split('/').pop() || ''
-        if (roomId && authorityPackage) {
-          try {
-            const password = sessionStorage.getItem(`chitchatter_room_password_${roomId}`)
-            if (password) {
-              const { encryptWithPassword } = await import('services/Encryption')
-              const encrypted = await encryptWithPassword(
-                JSON.stringify(newAuthorityPackage),
-                password,
-                `authority-${roomId}`
-              )
-              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
-            } else {
-              localStorage.setItem(`chitchatter_authority_${roomId}`, JSON.stringify(newAuthorityPackage))
-            }
-          } catch {
-            localStorage.setItem(`chitchatter_authority_${roomId}`, JSON.stringify(newAuthorityPackage))
-          }
+        setGroupClaim(newGroupClaim)
+        
+        // 保存到localStorage
+        try {
+          localStorage.setItem(`chitchatter_groupclaim_${groupClaim.roomId}`, JSON.stringify(newGroupClaim))
+          console.log('[邀请码吊销] GroupClaim已保存:', newGroupClaim.version)
+        } catch (error) {
+          console.error('[邀请码吊销] 保存GroupClaim失败:', error)
         }
-        broadcastAuthorityPackage(newAuthorityPackage)
+        
+        broadcastGroupClaim(newGroupClaim)
 
         return true
       } catch (err) {
@@ -196,14 +162,14 @@ export const useInvitationKeys = () => {
         return false
       }
     },
-    [isRoomCreator, creatorPrivateKey, authorityPackage, setAuthorityPackage]
+    [isRoomCreator, creatorPrivateKey, groupClaim, setGroupClaim, broadcastGroupClaim]
   )
 
   /**
    * 清理过期密钥
    */
   const cleanupExpiredKeys = useCallback(async (): Promise<number> => {
-    if (!isRoomCreator || !creatorPrivateKey || !authorityPackage) {
+    if (!isRoomCreator || !creatorPrivateKey || !groupClaim) {
       return 0
     }
 
@@ -213,7 +179,7 @@ export const useInvitationKeys = () => {
       const now = Date.now()
       let count = 0
 
-      const newKeyset = authorityPackage.keyset.map(record => {
+      const newKeyset = groupClaim.keyset.map(record => {
         if (
           record.status === 'ACTIVE' &&
           new Date(record.expiration).getTime() < now
@@ -226,55 +192,37 @@ export const useInvitationKeys = () => {
 
       if (count === 0) return 0
 
-      const newL = {
-        roomId: authorityPackage.roomId,
-        version: authorityPackage.version + 1,
+      const newGroupClaim: GroupClaim = {
+        ...groupClaim,
+        version: groupClaim.version + 1,
         timestamp: new Date().toISOString(),
-        createdAt: authorityPackage.createdAt,
-        creatorId: authorityPackage.creatorId,
         keyset: newKeyset,
+        signature: '',
       }
 
-      const signature = await signAuthorityPackage(newL, creatorPrivateKey)
-
-      const newAuthorityPackage = {
-        ...newL,
-        signature,
+      newGroupClaim.signature = await signAuthorityPackage(newGroupClaim, creatorPrivateKey)
+      
+      setGroupClaim(newGroupClaim)
+      
+      // 保存到localStorage
+      try {
+        localStorage.setItem(`chitchatter_groupclaim_${groupClaim.roomId}`, JSON.stringify(newGroupClaim))
+        console.log('[清理过期] GroupClaim已保存:', newGroupClaim.version)
+      } catch (error) {
+        console.error('[清理过期] 保存GroupClaim失败:', error)
       }
       
-      assertAuthorityPackage(newAuthorityPackage, 'cleanupExpiredKeys')
-      setAuthorityPackage(newAuthorityPackage)
-      // 持久化到 localStorage（加密）
-      const roomId = window.location.pathname.split('/').pop() || ''
-      if (roomId && authorityPackage) {
-        try {
-          const password = sessionStorage.getItem(`chitchatter_room_password_${roomId}`)
-          if (password) {
-            const { encryptWithPassword } = await import('services/Encryption')
-            const encrypted = await encryptWithPassword(
-              JSON.stringify(newAuthorityPackage),
-              password,
-              `authority-${roomId}`
-            )
-            localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
-          } else {
-            localStorage.setItem(`chitchatter_authority_${roomId}`, JSON.stringify(newAuthorityPackage))
-          }
-        } catch {
-          localStorage.setItem(`chitchatter_authority_${roomId}`, JSON.stringify(newAuthorityPackage))
-        }
-      }
-      broadcastAuthorityPackage(newAuthorityPackage)
+      broadcastGroupClaim(newGroupClaim)
 
       return count
     } catch (err) {
       setError(`清理过期密钥失败: ${err}`)
       return 0
     }
-  }, [isRoomCreator, creatorPrivateKey, authorityPackage, setAuthorityPackage])
+  }, [isRoomCreator, creatorPrivateKey, groupClaim, setGroupClaim, broadcastGroupClaim])
 
   return {
-    keys: authorityPackage?.keyset || [],
+    keys: groupClaim?.keyset || [],
     generateKey,
     revokeKey,
     cleanupExpiredKeys,

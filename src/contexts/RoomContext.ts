@@ -1,5 +1,5 @@
 import { FileOfferMetadata } from 'models/chat'
-import { AuthorityPackage } from 'models/authority'
+import { GroupClaim } from 'models/groupClaim'
 import { createContext, Dispatch, SetStateAction } from 'react'
 import { FileTransferService } from 'services/FileTransfer'
 
@@ -24,17 +24,15 @@ export interface RoomContextProps {
   fileTransferService: FileTransferService
   
   // 🆕 权限控制相关
-  authorityPackage: AuthorityPackage | null
-  setAuthorityPackage: Dispatch<SetStateAction<AuthorityPackage | null>>
+  groupClaim: GroupClaim | null
+  setGroupClaim: Dispatch<SetStateAction<GroupClaim | null>>
   contentKey: CryptoKey | null
   setContentKey: Dispatch<SetStateAction<CryptoKey | null>>
   isRoomCreator: boolean
   setIsRoomCreator: Dispatch<SetStateAction<boolean>>
-  creatorPublicKey: CryptoKey | null
-  setCreatorPublicKey: Dispatch<SetStateAction<CryptoKey | null>>
   creatorPrivateKey: CryptoKey | null
   setCreatorPrivateKey: Dispatch<SetStateAction<CryptoKey | null>>
-  broadcastAuthorityPackage: (pkg: AuthorityPackage) => void
+  broadcastGroupClaim: (gc: GroupClaim) => void
 }
 
 export const RoomContext = createContext<RoomContextProps>({
@@ -56,15 +54,13 @@ export const RoomContext = createContext<RoomContextProps>({
   fileTransferService: new FileTransferService({}),
   
   // 🆕 权限控制默认值
-  authorityPackage: null,
-  setAuthorityPackage: () => {},
+  groupClaim: null,
+  setGroupClaim: () => {},
   contentKey: null,
   setContentKey: () => {},
   isRoomCreator: false,
   setIsRoomCreator: () => {},
-  creatorPublicKey: null,
-  setCreatorPublicKey: () => {},
   creatorPrivateKey: null,
   setCreatorPrivateKey: () => {},
-  broadcastAuthorityPackage: () => {},
+  broadcastGroupClaim: () => {},
 })

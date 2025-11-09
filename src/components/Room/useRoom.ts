@@ -37,13 +37,13 @@ import { PeerAction } from 'models/network'
 import { AllowedKeyType, encryption } from 'services/Encryption'
 import { FileTransferService } from 'services/FileTransfer'
 import { notification } from 'services/Notification'
-import { createRoomAuthority, isCreator, restoreCreatorAuthority, createCreatorClaim, verifyCreatorClaim, compareCreatorClaims, saveVerifiedUser, loadVerifiedUser } from 'services/Authority'
+import { saveVerifiedUser, loadVerifiedUser, createGroupClaim, restoreCreatorIdentity, isRoomCreator as checkIsRoomCreator } from 'services/GroupClaimService'
 import { encryptMessageContent, decryptMessageContent, canSendMessage } from 'services/Authority/MessageEncryption'
-import { verifyInviteKey, markKeyAsUsed, decryptContentKeyWithKi } from 'services/Authority/Verification'
+import { decryptContentKeyWithKi } from 'services/Authority/Verification'
 import { signAuthorityPackage, sha256 } from 'services/Encryption'
-import { AuthorityPackage, CreatorClaim } from 'models/authority'
-import { JoinRequestMessage, JoinResponseMessage } from 'services/Serialization'
-import { assertAuthorityPackage, assertCreatorClaim, assertJoinRequest, assertJoinResponse } from 'utils/authorityValidation'
+import { GroupClaim, JoinRequest, JoinResponse, MessageType, InviteKeyRecord } from 'models/groupClaim'
+import { sendGroupClaim, sendJoinRequest as sendJoinReq, sendJoinResponse as sendJoinResp } from 'utils/messageSender'
+import { receiveMessage, messageStats } from 'utils/messageReceiver'
 
 import { messageTranscriptSizeLimit } from 'config/messaging'
 
@@ -177,18 +177,16 @@ export function useRoom(
   >({})
 
   // 权限控制状态
-  const [authorityPackage, setAuthorityPackage] = useState<AuthorityPackage | null>(null)
+  const [groupClaim, setGroupClaim] = useState<GroupClaim | null>(null)
   const [contentKey, setContentKey] = useState<CryptoKey | null>(null)
   const [isRoomCreator, setIsRoomCreator] = useState(false)
-  const [creatorPublicKey, setCreatorPublicKey] = useState<CryptoKey | null>(null)
   const [creatorPrivateKey, setCreatorPrivateKey] = useState<CryptoKey | null>(null)
-  const [myCreatorClaim, setMyCreatorClaim] = useState<CreatorClaim | null>(null)
-  const [winningClaim, setWinningClaim] = useState<CreatorClaim | null>(null)
-  const winningClaimRef = useRef<CreatorClaim | null>(null)
-  const myClaimRef = useRef<CreatorClaim | null>(null)
   const contentKeyRef = useRef<CryptoKey | null>(null)
-  const sendAuthorityPackageRef = useRef<((pkg: AuthorityPackage) => void) | null>(null)
+  const sendGroupClaimRef = useRef<((gc: GroupClaim) => void) | null>(null)
   const processedDirectMessageIds = useRef<Set<string>>(new Set())
+  const [waitingForGroupClaim, setWaitingForGroupClaim] = useState(false)
+  const [competitionTimer, setCompetitionTimer] = useState<NodeJS.Timeout | null>(null)
+  const competitionStartedRef = useRef(false)
   
   useEffect(() => {
     contentKeyRef.current = contentKey
@@ -212,28 +210,24 @@ export function useRoom(
       peerOfferedFileMetadata,
       setPeerOfferedFileMetadata,
       fileTransferService,
-      authorityPackage,
-      setAuthorityPackage,
+      groupClaim,
+      setGroupClaim,
       contentKey,
       setContentKey,
       isRoomCreator,
       setIsRoomCreator,
-      creatorPublicKey,
-      setCreatorPublicKey,
       creatorPrivateKey,
       setCreatorPrivateKey,
-      broadcastAuthorityPackage: (pkg: AuthorityPackage) => {
-        assertAuthorityPackage(pkg, 'broadcastAuthorityPackage')
-        console.log('[broadcastAuthorityPackage] 广播 AuthorityPackage:', {
-          version: pkg.version,
-          timestamp: pkg.timestamp,
-          roomId: pkg.roomId,
-          creatorId: pkg.creatorId,
-          createdAt: pkg.createdAt,
-          keysetLength: pkg.keyset?.length
+      broadcastGroupClaim: (gc: GroupClaim) => {
+        console.log('[broadcastGroupClaim] 广播 GroupClaim:', {
+          version: gc.version,
+          timestamp: gc.timestamp,
+          roomId: gc.roomId?.substring(0, 8) + '...',
+          creatorId: gc.creatorId?.substring(0, 8) + '...',
+          keysetLength: gc.keyset?.length
         })
-        if (sendAuthorityPackageRef.current) {
-          sendAuthorityPackageRef.current(pkg)
+        if (sendGroupClaimRef.current) {
+          sendGroupClaimRef.current(gc)
         }
       },
     }),
@@ -254,14 +248,12 @@ export function useRoom(
       peerOfferedFileMetadata,
       setPeerOfferedFileMetadata,
       fileTransferService,
-      authorityPackage,
-      setAuthorityPackage,
+      groupClaim,
+      setGroupClaim,
       contentKey,
       setContentKey,
       isRoomCreator,
       setIsRoomCreator,
-      creatorPublicKey,
-      setCreatorPublicKey,
       creatorPrivateKey,
       setCreatorPrivateKey,
     ]
@@ -571,354 +563,229 @@ export function useRoom(
   })
 
   // P2P 验证消息
-  const [sendJoinRequest] = usePeerAction<JoinRequestMessage>({
+  const [sendJoinRequest] = usePeerAction<JoinRequest>({
     namespace,
     peerAction: PeerAction.JOIN_REQUEST,
     peerRoom,
     onReceive: async (request, peerId) => {
-      assertJoinRequest(request, 'JOIN_REQUEST 收到')
-      console.log('[JOIN_REQUEST] 收到验证请求:', { request, peerId, isRoomCreator, hasAuthorityPackage: !!authorityPackage })
-      
-      // 只要有 authorityPackage 就可以验证，不仅限于管理员
-      if (!authorityPackage) {
-        console.log('[JOIN_REQUEST] 没有 authorityPackage，忽略')
-        return
-      }
-      
-      // 只有管理员才能更新 authorityPackage（标记为已使用）
-      const canUpdatePackage = isRoomCreator && creatorPrivateKey
-
-      console.log('[JOIN_REQUEST] 开始验证邀请码:', request.hashKi)
-      const result = await verifyInviteKey(
-        request.hashKi,
-        authorityPackage,
-        creatorPublicKey || undefined
-      )
-      console.log('[JOIN_REQUEST] 验证结果:', result)
-
-      if (!result.success) {
-        console.log('[JOIN_REQUEST] 验证失败，发送 DENY')
-        await sendJoinResponse(
-          {
+      receiveMessage(request, peerId, {
+        onJoinRequest: async (joinRequest, fromPeerId) => {
+          console.log('[JOIN_REQUEST] 收到验证请求:', { joinRequest, fromPeerId, isRoomCreator, hasGroupClaim: !!groupClaim })
+          
+          if (!groupClaim) {
+            console.log('[JOIN_REQUEST] 没有 GroupClaim，忽略')
+            return
+          }
+          
+          // 查找邀请码记录
+          const record = groupClaim.keyset.find(k => k.hash === joinRequest.hashKi)
+          if (!record) {
+            await sendJoinResp({
+              type: 'JOIN_RESPONSE',
+              result: 'DENY',
+              reason: 'INVALID_KEY'
+            }, sendJoinResponse, fromPeerId)
+            return
+          }
+          
+          if (record.status !== 'ACTIVE') {
+            await sendJoinResp({
+              type: 'JOIN_RESPONSE',
+              result: 'DENY',
+              reason: `KEY_${record.status}`
+            }, sendJoinResponse, fromPeerId)
+            return
+          }
+          
+          if (new Date(record.expiration).getTime() < Date.now()) {
+            await sendJoinResp({
+              type: 'JOIN_RESPONSE',
+              result: 'DENY',
+              reason: 'KEY_EXPIRED'
+            }, sendJoinResponse, fromPeerId)
+            return
+          }
+          
+          // 只有管理员才能更新 GroupClaim
+          if (isRoomCreator && creatorPrivateKey) {
+            console.log('[JOIN_REQUEST] 管理员更新 GroupClaim，标记为已使用')
+            const updatedKeyset = groupClaim.keyset.map(k => 
+              k.hash === joinRequest.hashKi 
+                ? { ...k, status: 'USED' as const, usedBy: joinRequest.userId }
+                : k
+            )
+            
+            const updatedGroupClaim: GroupClaim = {
+              ...groupClaim,
+              version: groupClaim.version + 1,
+              timestamp: new Date().toISOString(),
+              keyset: updatedKeyset,
+              signature: ''
+            }
+            
+            updatedGroupClaim.signature = await signAuthorityPackage(updatedGroupClaim, creatorPrivateKey)
+            setGroupClaim(updatedGroupClaim)
+            
+            // 广播更新的 GroupClaim
+            await sendGroupClaim(updatedGroupClaim, sendGroupClaimAction)
+          }
+          
+          // 发送成功响应
+          await sendJoinResp({
             type: 'JOIN_RESPONSE',
-            result: 'DENY',
-            reason: result.reason,
-          },
-          peerId
-        )
-        return
-      }
-
-      // 只有管理员才更新 authorityPackage
-      if (canUpdatePackage) {
-        console.log('[JOIN_REQUEST] 管理员更新 AuthorityPackage，使用者 userId:', request.userId)
-        const updatedL = markKeyAsUsed(authorityPackage, request.hashKi, request.userId)
-        // 确保必要字段存在
-        if (!updatedL.roomId) updatedL.roomId = roomId
-        if (!updatedL.creatorId) updatedL.creatorId = userId
-        if (!updatedL.createdAt) updatedL.createdAt = updatedL.timestamp
-        console.log('[JOIN_REQUEST] markKeyAsUsed 返回:', {
-          roomId: updatedL.roomId,
-          creatorId: updatedL.creatorId,
-          createdAt: updatedL.createdAt,
-          version: updatedL.version
-        })
-        const signature = await signAuthorityPackage(updatedL, creatorPrivateKey!)
-        const newAuthorityPackage = { ...updatedL, signature }
-        console.log('[JOIN_REQUEST] 新的 AuthorityPackage:', {
-          roomId: newAuthorityPackage.roomId,
-          creatorId: newAuthorityPackage.creatorId,
-          createdAt: newAuthorityPackage.createdAt,
-          version: newAuthorityPackage.version
-        })
-        assertAuthorityPackage(newAuthorityPackage, 'JOIN_REQUEST 更新')
-        setAuthorityPackage(newAuthorityPackage)
-        sendAuthorityPackage(newAuthorityPackage)
-        // 保存更新后的包
-        if (password) {
-          const { encryptWithPassword } = await import('services/Encryption')
-          const encrypted = await encryptWithPassword(
-            JSON.stringify(newAuthorityPackage),
-            password,
-            `authority-${roomId}`
-          )
-          localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
+            result: 'ALLOW',
+            encryptedContentKey: record.encryptedContentKey,
+            groupClaim: groupClaim
+          }, sendJoinResponse, fromPeerId)
         }
-      } else {
-        console.log('[JOIN_REQUEST] 非管理员，不更新 AuthorityPackage')
-      }
-
-      console.log('[JOIN_REQUEST] 发送 ALLOW 响应:', result.record!.encryptedContentKey)
-      await sendJoinResponse(
-        {
-          type: 'JOIN_RESPONSE',
-          result: 'ALLOW',
-          encryptedContentKey: result.record!.encryptedContentKey,
-        },
-        peerId
-      )
-      console.log('[JOIN_REQUEST] 响应已发送')
+      })
     },
   })
 
-  const [sendJoinResponse] = usePeerAction<JoinResponseMessage>({
+  const [sendJoinResponse] = usePeerAction<JoinResponse>({
     namespace,
     peerAction: PeerAction.JOIN_RESPONSE,
     peerRoom,
     onReceive: async (response, peerId) => {
-      assertJoinResponse(response, 'JOIN_RESPONSE 收到')
-      console.log('[JOIN_RESPONSE] 收到验证响应:', { response, peerId })
-      if (response.result === 'DENY') {
-        console.log('[JOIN_RESPONSE] 验证被拒绝:', response.reason)
-        sessionStorage.removeItem(`invite_key_${roomId}`)
-        showAlert(`验证失败: ${response.reason || '无效的邀请密钥'}`, { severity: 'error' })
-        // 提示用户刷新页面以重新输入邀请码
-        setTimeout(() => {
-          if (window.confirm('邀请码验证失败，是否刷新页面重新输入？')) {
-            window.location.reload()
+      receiveMessage(response, peerId, {
+        onJoinResponse: async (joinResponse, fromPeerId) => {
+          console.log('[JOIN_RESPONSE] 收到验证响应:', { joinResponse, fromPeerId })
+          
+          if (joinResponse.result === 'DENY') {
+            console.log('[JOIN_RESPONSE] 验证被拒绝:', joinResponse.reason)
+            sessionStorage.removeItem(`invite_key_${roomId}`)
+            showAlert(`验证失败: ${joinResponse.reason || '无效的邀请密钥'}`, { severity: 'error' })
+            return
           }
-        }, 1000)
-        return
-      }
 
-      if (response.encryptedContentKey) {
-        const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
-        if (!storedInviteKey) return
+          if (joinResponse.encryptedContentKey && joinResponse.groupClaim) {
+            const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
+            if (!storedInviteKey) return
 
-        try {
-          const decryptedContentKey = await decryptContentKeyWithKi(
-            response.encryptedContentKey,
-            storedInviteKey
-          )
-          setContentKey(decryptedContentKey)
-          
-          // 保存验证信息到本地
-          const inviteKeyHash = await sha256(storedInviteKey)
-          await saveVerifiedUser(roomId, userId, decryptedContentKey, inviteKeyHash)
-          
-          // 保存邀请码哈希（用于后续验证吊销）
-          localStorage.setItem(`chitchatter_invite_hash_${roomId}_${userId}`, inviteKeyHash)
-          
-          sessionStorage.removeItem(`invite_key_${roomId}`)
-          showAlert('验证成功！', { severity: 'success' })
-          
-          // 3秒后提示刷新
-          setTimeout(() => {
-            if (window.confirm('验证成功！是否刷新页面以查看完整消息？')) {
-              window.location.reload()
-            }
-          }, 1000)
-        } catch (error) {
-          showAlert('密钥错误', { severity: 'error' })
-        }
-      }
-    },
-  })
-
-  // 创建者声明广播和共识
-  const [sendCreatorClaim] = usePeerAction<CreatorClaim>({
-    namespace,
-    peerAction: PeerAction.CREATOR_CLAIM,
-    peerRoom,
-    onReceive: async (claim, peerId) => {
-      const isValid = await verifyCreatorClaim(claim)
-      if (!isValid) return
-
-      // 如果我是管理员，忽略所有声明（管理员不能被降级）
-      if (isRoomCreator) {
-        return
-      }
-
-      const currentWinner = winningClaimRef.current || myClaimRef.current
-      if (!currentWinner) {
-        winningClaimRef.current = claim
-        setWinningClaim(claim)
-        return
-      }
-
-      const winner = compareCreatorClaims(currentWinner, claim)
-      winningClaimRef.current = winner
-      setWinningClaim(winner)
-    },
-  })
-
-  // AuthorityPackage 广播（邀请码列表）
-  const [sendAuthorityPackage, , authorityPackageProgress] = usePeerAction<AuthorityPackage>({
-    namespace,
-    peerAction: PeerAction.AUTHORITY_PACKAGE,
-    peerRoom,
-    onReceive: async (receivedPackage, peerId) => {
-      console.log('[AuthorityPackage] 收到:', {
-        isRoomCreator,
-        hasMyPackage: !!authorityPackage,
-        myTimestamp: authorityPackage?.timestamp,
-        receivedTimestamp: receivedPackage.timestamp,
-        myCreatorId: authorityPackage?.creatorId,
-        receivedCreatorId: receivedPackage.creatorId,
-        myRoomId: roomId,
-        receivedRoomId: receivedPackage.roomId,
-        peerId
-      })
-      
-      // 首先验证 roomId，防止跨房间消息
-      if (receivedPackage.roomId && receivedPackage.roomId !== roomId) {
-        console.warn('[AuthorityPackage] 忽略不同房间的包:', {
-          expected: roomId,
-          received: receivedPackage.roomId
-        })
-        return
-      }
-
-      // 如果我是管理员
-      if (isRoomCreator && authorityPackage) {
-        console.log('[AuthorityPackage] 管理员处理逻辑:', {
-          myUserId: userId,
-          myCreatorId: authorityPackage.creatorId,
-          receivedCreatorId: receivedPackage.creatorId
-        })
-        
-        // 检查是不是同一个 creatorId 的包
-        if (receivedPackage.creatorId === authorityPackage.creatorId) {
-          console.log('[AuthorityPackage] 是自己的包，检查版本', {
-            receivedVersion: receivedPackage.version,
-            myVersion: authorityPackage.version
-          })
-          // 是自己的包，检查版本号，只接受更新的
-          if (receivedPackage.version > authorityPackage.version) {
-            console.log('[AuthorityPackage] 接收自己的更新包')
-            setAuthorityPackage(receivedPackage)
-            if (password) {
-              const { encryptWithPassword } = await import('services/Encryption')
-              const encrypted = await encryptWithPassword(
-                JSON.stringify(receivedPackage),
-                password,
-                `authority-${roomId}`
+            try {
+              const decryptedContentKey = await decryptContentKeyWithKi(
+                joinResponse.encryptedContentKey,
+                storedInviteKey
               )
-              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
+              setContentKey(decryptedContentKey)
+              setGroupClaim(joinResponse.groupClaim)
+              
+              // 保存验证信息到本地
+              const inviteKeyHash = await sha256(storedInviteKey)
+              await saveVerifiedUser(roomId, userId, decryptedContentKey, inviteKeyHash)
+              
+              sessionStorage.removeItem(`invite_key_${roomId}`)
+              showAlert('验证成功！', { severity: 'success' })
+              
+            } catch (error) {
+              showAlert('密钥错误', { severity: 'error' })
             }
-          } else {
-            console.log('[AuthorityPackage] 版本不更新，忽略')
           }
-          return
         }
-        
-        console.log('[AuthorityPackage] 不是自己的包，比较 createdAt')
-        
-        // 不是自己的包，比较 createdAt
-        const myCreatedTime = new Date(authorityPackage.createdAt || authorityPackage.timestamp).getTime()
-        const receivedCreatedTime = new Date(receivedPackage.createdAt || receivedPackage.timestamp).getTime()
-        
-        console.log('[AuthorityPackage] 时间比较:', {
-          myCreatedTime: new Date(myCreatedTime).toISOString(),
-          receivedCreatedTime: new Date(receivedCreatedTime).toISOString(),
-          receivedIsEarlier: receivedCreatedTime < myCreatedTime,
-          timeDiff: Math.abs(myCreatedTime - receivedCreatedTime)
-        })
-        
-        // 关键修复：只有时间差超过 10 秒才认为是真正的冲突
-        // 如果时间差很小（< 10秒），可能是同一个管理员的不同标签页或刷新后的重连
-        const timeDiff = Math.abs(myCreatedTime - receivedCreatedTime)
-        const isRealConflict = timeDiff > 10000 // 10 秒
-        
-        if (receivedCreatedTime < myCreatedTime && isRealConflict) {
-          console.log('[降级] 对方更早且时间差显著，主动降级', {
-            myCreatedTime: new Date(myCreatedTime).toISOString(),
-            receivedCreatedTime: new Date(receivedCreatedTime).toISOString(),
-            timeDiff,
-            myCreatorId: authorityPackage.creatorId,
-            receivedCreatorId: receivedPackage.creatorId
-          })
-          // 真正的管理员冲突：删除当前房间的 localStorage 数据
-          setIsRoomCreator(false)
-          setCreatorPrivateKey(null)
-          setContentKey(null)
-          myClaimRef.current = null
-          setMyCreatorClaim(null)
-          // 只删除当前 roomId 的数据，不影响其他房间
-          localStorage.removeItem(`chitchatter_creator_${roomId}`)
-          localStorage.removeItem(`chitchatter_authority_${roomId}`)
-          sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
-          showAlert('检测到更早的管理员，退出房间', { severity: 'error' })
-          setTimeout(() => {
-            peerRoom.leaveRoom()
-            window.location.href = window.location.pathname
-          }, 1500)
-          return
-        }
-        
-        if (!isRealConflict) {
-          console.log('[AuthorityPackage] 时间差太小，可能是同一管理员，忽略')
-        } else {
-          console.log('[AuthorityPackage] 我更早，丢弃对方的包')
-        }
-        return
-      }
-
-      // 收到 AuthorityPackage 说明已有管理员
-      // 如果我正在竞争，立即放弃
-      if (myClaimRef.current) {
-        myClaimRef.current = null
-        setMyCreatorClaim(null)
-      }
-
-      if (creatorPublicKey) {
-        const { verifyAuthorityPackage } = await import('services/Encryption')
-        const isValid = await verifyAuthorityPackage(receivedPackage, creatorPublicKey)
-        if (!isValid) return
-      }
-
-      if (authorityPackage) {
-        // 如果是同一个管理员的包，检查版本号
-        if (receivedPackage.creatorId === authorityPackage.creatorId) {
-          if (receivedPackage.version <= authorityPackage.version) return
-        } else {
-          // 不同管理员，比较 createdAt，只接受更早的
-          const myCreatedTime = new Date(authorityPackage.createdAt || authorityPackage.timestamp).getTime()
-          const receivedCreatedTime = new Date(receivedPackage.createdAt || receivedPackage.timestamp).getTime()
-          if (receivedCreatedTime >= myCreatedTime) return
-        }
-      }
-
-      console.log('[非管理员] 接收 AuthorityPackage:', {
-        roomId: receivedPackage.roomId,
-        creatorId: receivedPackage.creatorId,
-        createdAt: receivedPackage.createdAt,
-        version: receivedPackage.version
       })
-      setAuthorityPackage(receivedPackage)
-      // 持久化 authorityPackage（加密）
-      if (password) {
-        const { encryptWithPassword } = await import('services/Encryption')
-        const encrypted = await encryptWithPassword(
-          JSON.stringify(receivedPackage),
-          password,
-          `authority-${roomId}`
-        )
-        localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
-      } else {
-        localStorage.setItem(`chitchatter_authority_${roomId}`, JSON.stringify(receivedPackage))
-      }
+    },
+  })
 
-      // 检查是否被吊销
-      if (!isRoomCreator && contentKey) {
-        const storedHash = localStorage.getItem(`chitchatter_invite_hash_${roomId}_${userId}`)
-        if (storedHash) {
-          const record = receivedPackage.keyset.find(k => k.hash === storedHash)
-          if (record && record.status === 'REVOKED') {
-            setContentKey(null)
-            localStorage.removeItem(`chitchatter_verified_${roomId}_${userId}`)
-            localStorage.removeItem(`chitchatter_invite_hash_${roomId}_${userId}`)
-            showAlert('你的访问权限已被吊销', { severity: 'error' })
+  // GroupClaim 广播和处理
+  const [sendGroupClaimAction] = usePeerAction<GroupClaim>({
+    namespace,
+    peerAction: PeerAction.GROUP_CLAIM,
+    peerRoom,
+    onReceive: async (receivedGroupClaim, peerId) => {
+      receiveMessage(receivedGroupClaim, peerId, {
+        onGroupClaim: async (groupClaimData, fromPeerId) => {
+          console.log('[GROUP_CLAIM] 收到:', {
+            isRoomCreator,
+            hasMyGroupClaim: !!groupClaim,
+            myVersion: groupClaim?.version,
+            receivedVersion: groupClaimData.version,
+            myCreatorId: groupClaim?.creatorId,
+            receivedCreatorId: groupClaimData.creatorId,
+            fromPeerId
+          })
+          
+          // 验证 roomId
+          if (groupClaimData.roomId !== roomId) {
+            console.warn('[GROUP_CLAIM] 忽略不同房间的消息')
+            return
+          }
+          
+          // 清除竞争状态
+          if (waitingForGroupClaim) {
+            setWaitingForGroupClaim(false)
+            if (competitionTimer) {
+              clearTimeout(competitionTimer)
+              setCompetitionTimer(null)
+            }
+          }
+          
+          // 如果我是管理员且有本地 GroupClaim
+          if (isRoomCreator && groupClaim) {
+            if (groupClaimData.creatorId === groupClaim.creatorId) {
+              // 同一创建者，比较版本
+              if (groupClaimData.version > groupClaim.version) {
+                setGroupClaim(groupClaimData)
+                console.log('[GROUP_CLAIM] 更新到更新版本')
+              }
+            } else {
+              // 不同创建者，比较创建时间
+              const myCreatedTime = new Date(groupClaim.createdAt).getTime()
+              const receivedCreatedTime = new Date(groupClaimData.createdAt).getTime()
+              
+              if (receivedCreatedTime < myCreatedTime) {
+                console.log('[GROUP_CLAIM] 对方更早，主动降级')
+                setIsRoomCreator(false)
+                setCreatorPrivateKey(null)
+                setGroupClaim(groupClaimData)
+                showAlert('检测到更早的管理员', { severity: 'warning' })
+              }
+            }
+            return
+          }
+          
+          // 非管理员或无本地 GroupClaim
+          if (!groupClaim) {
+            // 本地无数据，保存接收到的
+            setGroupClaim(groupClaimData)
+            console.log('[GROUP_CLAIM] 保存接收到的 GroupClaim')
+          } else {
+            // 本地有数据，比较更新
+            if (groupClaimData.creatorId === groupClaim.creatorId) {
+              if (groupClaimData.version > groupClaim.version) {
+                setGroupClaim(groupClaimData)
+                console.log('[GROUP_CLAIM] 更新到更新版本')
+              }
+            } else {
+              const myCreatedTime = new Date(groupClaim.createdAt).getTime()
+              const receivedCreatedTime = new Date(groupClaimData.createdAt).getTime()
+              
+              if (receivedCreatedTime < myCreatedTime) {
+                setGroupClaim(groupClaimData)
+                console.log('[GROUP_CLAIM] 替换为更早的 GroupClaim')
+              }
+            }
+          }
+          
+          // 检查是否被吊销
+          if (!isRoomCreator && contentKey) {
+            const storedHash = localStorage.getItem(`chitchatter_invite_hash_${roomId}_${userId}`)
+            if (storedHash) {
+              const record = groupClaimData.keyset.find(k => k.hash === storedHash)
+              if (record && record.status === 'REVOKED') {
+                setContentKey(null)
+                showAlert('你的访问权限已被吊销', { severity: 'error' })
+              }
+            }
           }
         }
-      }
+      })
     },
   })
   
   // 更新 ref
   useEffect(() => {
-    sendAuthorityPackageRef.current = sendAuthorityPackage
-  }, [sendAuthorityPackage])
+    sendGroupClaimRef.current = sendGroupClaimAction
+  }, [sendGroupClaimAction])
 
   const { privateKey } = settingsContext.getUserSettings()
 
@@ -997,19 +864,14 @@ export function useRoom(
 
           await Promise.all(promises)
 
-          // 私有房间：如果我有 AuthorityPackage，主动发送给新 peer（管理员或普通成员）
-          if (isPrivate && authorityPackage) {
-            assertAuthorityPackage(authorityPackage, 'onPeerJoin 发送')
-            console.log('[onPeerJoin] 发送 AuthorityPackage 给新 peer:', {
-              roomId: authorityPackage.roomId,
-              creatorId: authorityPackage.creatorId,
-              createdAt: authorityPackage.createdAt,
-              version: authorityPackage.version
+          // 私有房间：如果我有 GroupClaim，发送给新 peer
+          if (isPrivate && groupClaim) {
+            console.log('[onPeerJoin] 发送 GroupClaim 给新 peer:', {
+              roomId: groupClaim.roomId?.substring(0, 8) + '...',
+              creatorId: groupClaim.creatorId?.substring(0, 8) + '...',
+              version: groupClaim.version
             })
-            sendAuthorityPackage(authorityPackage)
-            if (isRoomCreator && myClaimRef.current) {
-              sendCreatorClaim(myClaimRef.current)
-            }
+            await sendGroupClaim(groupClaim, sendGroupClaimAction, peerId)
           }
 
           // 私有房间：新用户需要验证
@@ -1023,29 +885,32 @@ export function useRoom(
               if (inviteKey) {
                 sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
                 const hashKi = await sha256(inviteKey)
-                console.log('[onPeerJoin] 发送验证请求:', { hashKi, userId })
-                await sendJoinRequest(
-                  {
-                    type: 'JOIN_REQUEST',
-                    hashKi,
-                    peerId: userId,
-                    userId,
-                  },
-                  peerId
-                )
+                const joinRequest: JoinRequest = {
+                  type: 'JOIN_REQUEST',
+                  hashKi,
+                  userId
+                }
+                
+                console.log('[onPeerJoin] 发送验证请求到新peer:', { hashKi: hashKi.substring(0, 16) + '...', userId: userId.substring(0, 8) + '...', peerId: peerId.substring(0, 8) + '...' })
+                await sendJoinReq(joinRequest, sendJoinRequest, peerId)
+                
+                // 向所有已连接的其他peer也发送验证请求
+                for (const peer of peerList) {
+                  if (peer.peerId !== peerId) {
+                    console.log('[onPeerJoin] 发送验证请求到已有peer:', { targetPeerId: peer.peerId.substring(0, 8) + '...' })
+                    await sendJoinReq(joinRequest, sendJoinRequest, peer.peerId)
+                  }
+                }
               }
             } else {
               const hashKi = await sha256(storedInviteKey)
-              console.log('[onPeerJoin] 使用已存储的邀请码发送验证请求:', { hashKi, userId })
-              await sendJoinRequest(
-                {
-                  type: 'JOIN_REQUEST',
-                  hashKi,
-                  peerId: userId,
-                  userId,
-                },
-                peerId
-              )
+              const joinRequest: JoinRequest = {
+                type: 'JOIN_REQUEST',
+                hashKi,
+                userId
+              }
+              console.log('[onPeerJoin] 使用已存储的邀请码发送验证请求')
+              await sendJoinReq(joinRequest, sendJoinRequest, peerId)
             }
           } else {
             console.log('[onPeerJoin] 跳过验证:', { isPrivate, isRoomCreator, hasContentKey: !!contentKey })
@@ -1162,252 +1027,160 @@ export function useRoom(
 
     ;(async () => {
       try {
-        // 保存密码到 sessionStorage（用于加密 localStorage 数据）
-        if (password) {
-          sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
-        }
-        
         // 保存到房间历史
         const { addRoomToHistory } = await import('services/RoomHistory')
         addRoomToHistory(roomId, password)
         
-        // 检查当前标签页是否已经是管理员
-        const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
+        // 确保房间密码已保存到sessionStorage用于加密存储
+        if (password && !sessionStorage.getItem(`chitchatter_room_password_${roomId}`)) {
+          sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
+        }
         
-        // 1. 检查本地是否有创建者信息且当前标签页是管理员
-        if (sessionCreator === 'true' && isCreator(roomId)) {
-          const restored = await restoreCreatorAuthority(roomId, password!)
-          if (restored && restored.contentKey) {
+        // 1. 检查session标记，如果是管理员尝试恢复
+        const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
+        if (sessionCreator === 'true') {
+          // 确保房间密码已保存到sessionStorage
+          if (!sessionStorage.getItem(`chitchatter_room_password_${roomId}`) && password) {
+            sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
+          }
+          
+          const restored = await restoreCreatorIdentity(roomId, userId)
+          if (restored) {
             setContentKey(restored.contentKey)
-            setCreatorPublicKey(restored.publicKey)
             setCreatorPrivateKey(restored.privateKey)
             setIsRoomCreator(true)
             
-            const claim = await createCreatorClaim(1, userId, restored.publicKey, restored.privateKey)
-            assertCreatorClaim(claim, '管理员恢复创建')
-            myClaimRef.current = claim
-            setMyCreatorClaim(claim)
-            
-            // 恢复或创建 authorityPackage
-            const storedAuthority = localStorage.getItem(`chitchatter_authority_${roomId}`)
-            console.log('[管理员恢复] localStorage中的authority:', storedAuthority ? '存在' : '不存在')
-            let authorityPkg: AuthorityPackage
-            if (storedAuthority) {
+            // 恢复GroupClaim
+            const storedGroupClaim = localStorage.getItem(`chitchatter_groupclaim_${roomId}`)
+            if (storedGroupClaim) {
               try {
-                const { decryptWithPassword } = await import('services/Encryption')
-                const decrypted = await decryptWithPassword(storedAuthority, password!, `authority-${roomId}`)
-                authorityPkg = JSON.parse(decrypted)
-                console.log('[管理员恢复] 从localStorage恢复:', {
-                  version: authorityPkg.version,
-                  roomId: authorityPkg.roomId,
-                  creatorId: authorityPkg.creatorId,
-                  createdAt: authorityPkg.createdAt
-                })
-              } catch {
-                authorityPkg = JSON.parse(storedAuthority)
-                console.log('[管理员恢复] 解密失败，使用明文:', {
-                  version: authorityPkg.version,
-                  roomId: authorityPkg.roomId,
-                  creatorId: authorityPkg.creatorId
-                })
+                const parsedGroupClaim = JSON.parse(storedGroupClaim)
+                setGroupClaim(parsedGroupClaim)
+                console.log('[管理员恢复] GroupClaim已恢复:', parsedGroupClaim.version)
+              } catch (error) {
+                console.error('[管理员恢复] GroupClaim恢复失败:', error)
               }
-            } else {
-              const now = new Date().toISOString()
-              authorityPkg = {
-                roomId,
-                version: 1,
-                timestamp: now,
-                createdAt: now,
-                creatorId: userId,
-                keyset: [],
-                signature: '',
-              }
-              console.log('[管理员恢复] 创建新的authority:', {
-                version: authorityPkg.version,
-                roomId: authorityPkg.roomId,
-                creatorId: authorityPkg.creatorId
-              })
-            }
-            // 确保旧数据有 roomId, createdAt 和 creatorId
-            let needsResign = false
-            if (!authorityPkg.roomId) {
-              authorityPkg.roomId = roomId
-              needsResign = true
-              console.log('[管理员恢复] 添加roomId')
-            }
-            if (!authorityPkg.createdAt) {
-              authorityPkg.createdAt = authorityPkg.timestamp
-              needsResign = true
-              console.log('[管理员恢复] 添加createdAt')
-            }
-            if (!authorityPkg.creatorId) {
-              authorityPkg.creatorId = userId
-              needsResign = true
-              console.log('[管理员恢复] 添加creatorId')
-            }
-            // 重新签名（因为添加了新字段）
-            if (needsResign) {
-              const { signAuthorityPackage } = await import('services/Encryption')
-              const newSignature = await signAuthorityPackage(authorityPkg, restored.privateKey)
-              authorityPkg.signature = newSignature
-              console.log('[管理员恢复] 重新签名')
-              // 保存更新后的 authorityPackage
-              const { encryptWithPassword } = await import('services/Encryption')
-              const encrypted = await encryptWithPassword(
-                JSON.stringify(authorityPkg),
-                password!,
-                `authority-${roomId}`
-              )
-              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
             }
             
-            console.log('[管理员恢复] 最终的authority:', {
-              version: authorityPkg.version,
-              roomId: authorityPkg.roomId,
-              creatorId: authorityPkg.creatorId,
-              createdAt: authorityPkg.createdAt
-            })
-            console.log('[管理员恢复] 完整的 authorityPkg:', authorityPkg)
-            setAuthorityPackage(authorityPkg)
-            sendAuthorityPackage(authorityPkg)
-            sendCreatorClaim(claim)
-            // 更新房间历史
-            const { addRoomToHistory } = await import('services/RoomHistory')
-            addRoomToHistory(roomId, password)
+            showAlert('管理员身份已恢复', { severity: 'success' })
             return
+          } else {
+            // 恢复失败，清除session标记
+            sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
           }
         }
-
-        // 2. 检查本地是否有验证过的用户信息
+        
+        // 2. 检查普通用户验证信息
         const verifiedContentKey = await loadVerifiedUser(roomId, userId)
         if (verifiedContentKey) {
           setContentKey(verifiedContentKey)
-          // 恢复 authorityPackage，普通成员也要广播
-          const storedAuthority = localStorage.getItem(`chitchatter_authority_${roomId}`)
-          if (storedAuthority && password) {
+          
+          // 尝试恢复已存在的GroupClaim
+          const storedGroupClaim = localStorage.getItem(`chitchatter_groupclaim_${roomId}`)
+          if (storedGroupClaim) {
             try {
-              const { decryptWithPassword } = await import('services/Encryption')
-              const decrypted = await decryptWithPassword(storedAuthority, password, `authority-${roomId}`)
-              let authorityPkg = JSON.parse(decrypted)
-              // 确保必要字段存在
-              if (!authorityPkg.roomId) authorityPkg.roomId = roomId
-              if (!authorityPkg.createdAt) authorityPkg.createdAt = authorityPkg.timestamp
-              setAuthorityPackage(authorityPkg)
-              sendAuthorityPackage(authorityPkg)
-            } catch {
-              let authorityPkg = JSON.parse(storedAuthority)
-              // 确保必要字段存在
-              if (!authorityPkg.roomId) authorityPkg.roomId = roomId
-              if (!authorityPkg.createdAt) authorityPkg.createdAt = authorityPkg.timestamp
-              setAuthorityPackage(authorityPkg)
-              sendAuthorityPackage(authorityPkg)
+              const parsedGroupClaim = JSON.parse(storedGroupClaim)
+              setGroupClaim(parsedGroupClaim)
+              console.log('[用户恢复] GroupClaim已恢复:', parsedGroupClaim.version)
+            } catch (error) {
+              console.error('[用户恢复] GroupClaim恢复失败:', error)
             }
           }
+          
           showAlert('欢迎回来！已自动登录', { severity: 'success' })
           return
         }
-
-        // 3. 无本地信息，等待 5 秒看是否有管理员
       } catch (error) {
         console.error('初始化权限系统失败:', error)
       }
     })()
-  }, [roomId, password, isPrivate, userId, showAlert, sendAuthorityPackage, sendCreatorClaim])
+  }, [roomId, password, isPrivate, userId, showAlert])
 
-  // 创建者竞争：无本地信息时等待 5 秒
+  // 10秒竞争机制 - 只在初始化时执行一次
   useEffect(() => {
-    if (!isPrivate || contentKey || myCreatorClaim || isRoomCreator) return
+    if (!isPrivate) return
 
-    const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
-    if (storedInviteKey) {
-      console.log('[竞争] 已有邀请码，跳过竞争')
-      return
-    }
-
-    // 检查是否有本地创建者或验证信息
-    ;(async () => {
-      const hasCreator = isCreator(roomId)
-      const hasVerified = await loadVerifiedUser(roomId, userId)
+    let competitionStarted = false
+    
+    const startCompetition = async () => {
+      // 防止重复启动
+      if (competitionStarted) return
       
-      // 有本地信息则不竞争
-      if (hasCreator || hasVerified) return
-
-      // 无本地信息，等待 5 秒接收 AuthorityPackage
-      const authority = await createRoomAuthority(roomId, password!, userId)
-      assertCreatorClaim(authority.claim, '5秒竞争创建')
-      myClaimRef.current = authority.claim
-      setMyCreatorClaim(authority.claim)
-      sendCreatorClaim(authority.claim)
-
-      setTimeout(() => {
-        // 如果收到了 AuthorityPackage，说明已有管理员，不成为管理员
-        if (authorityPackage && authorityPackage.keyset !== undefined) {
-          myClaimRef.current = null
-          setMyCreatorClaim(null)
-          // 关键修复：删除错误保存的所有数据
-          localStorage.removeItem(`chitchatter_creator_${roomId}`)
-          localStorage.removeItem(`chitchatter_authority_${roomId}`)
-          showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
+      // 检查是否已经是管理员
+      const sessionCreator = sessionStorage.getItem(`chitchatter_session_creator_${roomId}`)
+      if (sessionCreator === 'true') {
+        console.log('[竞争] 已是管理员，跳过竞争')
+        return
+      }
+      
+      // 检查是否已有验证信息
+      const hasVerified = await loadVerifiedUser(roomId, userId)
+      if (hasVerified) {
+        console.log('[竞争] 已验证用户，跳过竞争')
+        return
+      }
+      
+      // 检查是否有邀请码
+      const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
+      if (storedInviteKey) {
+        console.log('[竞争] 已有邀请码，跳过竞争')
+        return
+      }
+      
+      competitionStarted = true
+      console.log('[竞争] 开始 10 秒竞争期')
+      setWaitingForGroupClaim(true)
+      
+      const timer = setTimeout(async () => {
+        // 再次检查状态，防止在等待期间状态改变
+        if (isRoomCreator || contentKey || groupClaim) {
+          console.log('[竞争] 状态已改变，取消成为管理员')
+          setWaitingForGroupClaim(false)
           return
         }
-
-        // 如果被其他声明击败
-        if (!myClaimRef.current) {
-          // 关键修复：删除错误保存的所有数据
-          localStorage.removeItem(`chitchatter_creator_${roomId}`)
-          localStorage.removeItem(`chitchatter_authority_${roomId}`)
-          showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
-          return
-        }
-
-        // 5 秒内没收到任何信息，成为管理员
-        const finalWinner = winningClaimRef.current || authority.claim
-        if (finalWinner.claimHash === authority.claim.claimHash) {
-          setAuthorityPackage(authority.authorityPackage)
-          setContentKey(authority.contentKey)
-          setCreatorPublicKey(authority.publicKey)
-          setCreatorPrivateKey(authority.privateKey)
+        
+        console.log('[竞争] 10 秒内无 GroupClaim，成为管理员')
+        
+        try {
+          // 创建 GroupClaim
+          const { groupClaim: newGroupClaim, contentKey: contentKeyObj, privateKey } = await createGroupClaim(roomId, userId)
+          
+          setGroupClaim(newGroupClaim)
+          setContentKey(contentKeyObj)
+          setCreatorPrivateKey(privateKey)
           setIsRoomCreator(true)
-          // 标记当前标签页为管理员
+          setWaitingForGroupClaim(false)
+          
+          // 保存到本地
           sessionStorage.setItem(`chitchatter_session_creator_${roomId}`, 'true')
-          // 更新房间历史
-          ;(async () => {
-            const { addRoomToHistory } = await import('services/RoomHistory')
-            addRoomToHistory(roomId, password)
-          })()
-          // 持久化 authorityPackage（加密）
-          ;(async () => {
-            if (password) {
-              const { encryptWithPassword } = await import('services/Encryption')
-              const encrypted = await encryptWithPassword(
-                JSON.stringify(authority.authorityPackage),
-                password,
-                `authority-${roomId}`
-              )
-              localStorage.setItem(`chitchatter_authority_${roomId}`, encrypted)
-            }
-          })()
-          console.log('[5秒竞争] 成为管理员，广播 AuthorityPackage:', {
-            roomId: authority.authorityPackage.roomId,
-            creatorId: authority.authorityPackage.creatorId,
-            version: authority.authorityPackage.version
-          })
-          sendAuthorityPackage(authority.authorityPackage)
+          
+          // 保存GroupClaim到localStorage
+          localStorage.setItem(`chitchatter_groupclaim_${roomId}`, JSON.stringify(newGroupClaim))
+          
+          // 广播 GroupClaim
+          await sendGroupClaim(newGroupClaim, sendGroupClaimAction)
+          
           showAlert('你是房间管理员', { severity: 'success' })
-        } else {
-          showAlert('房间已有管理员，需要邀请码才能加入', { severity: 'info' })
-          // 提示输入邀请码
-          setTimeout(() => {
-            const inviteKey = prompt('请输入邀请密钥：')
-            if (inviteKey) {
-              sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
-              showAlert('邀请码已保存，请等待其他用户加入后自动验证', { severity: 'info' })
-            }
-          }, 500)
+        } catch (error) {
+          console.error('[竞争] 创建管理员失败:', error)
+          setWaitingForGroupClaim(false)
         }
-      }, 5000)
-    })()
-  }, [isPrivate, contentKey, myCreatorClaim, isRoomCreator, roomId, password, userId, sendCreatorClaim, authorityPackage, sendAuthorityPackage, showAlert])
+      }, 10000)
+      
+      setCompetitionTimer(timer)
+    }
+    
+    // 延迟启动竞争，给管理员恢复时间
+    const initTimer = setTimeout(startCompetition, 100)
+    
+    return () => {
+      clearTimeout(initTimer)
+      if (competitionTimer) {
+        clearTimeout(competitionTimer)
+        setCompetitionTimer(null)
+      }
+    }
+  }, [roomId, isPrivate]) // 只依赖 roomId 和 isPrivate
 
   return {
     isDirectMessageRoom,

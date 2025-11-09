@@ -88,6 +88,9 @@ export function PrivateRoom({ userId }: PublicRoomProps) {
       
       const encodedSecret = await encryption.encodePassword(roomId, password)
       
+      // 保存原始密码到sessionStorage用于加密存储
+      sessionStorage.setItem(`chitchatter_room_password_${roomId}`, password)
+      
       // 如果有邀请码，先存储（进入房间后会自动验证）
       if (inviteKey) {
         sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
