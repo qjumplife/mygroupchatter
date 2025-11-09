@@ -768,18 +768,41 @@ export function useRoom(
                 localStorage.removeItem(`chitchatter_verified_${roomId}_${userId}`)
                 localStorage.removeItem(`chitchatter_invite_hash_${roomId}_${userId}`)
                 
-                console.log('[GROUP_CLAIM] 已清除所有本地数据，成为新用户')
+                // 清除临时状态信息
+                const tempKeys = Object.keys(localStorage).filter(key => 
+                  key.startsWith(`chitchatter_temp_status_${roomId}_`)
+                )
+                tempKeys.forEach(key => localStorage.removeItem(key))
+                
+                // 清除邀请码历史记录
+                localStorage.removeItem('chitchatter_invite_history')
+                localStorage.removeItem('chitchatter_save_invite_history')
+                
+                // 从房间历史中移除该房间（因为现在是群外人）
+                ;(async () => {
+                  try {
+                    const { removeRoomFromHistory } = await import('services/RoomHistory')
+                    removeRoomFromHistory(roomId)
+                    console.log('[GROUP_CLAIM] 已从房间历史中移除')
+                  } catch (error) {
+                    console.error('[GROUP_CLAIM] 移除房间历史失败:', error)
+                  }
+                })()
+                
+                console.log('[GROUP_CLAIM] 已清除所有本地数据，成为群外新人')
                 showAlert('检测到更早的管理员，已降级为普通用户', { severity: 'warning' })
                 
                 // 提示输入邀请码
                 setTimeout(() => {
-                  const inviteKey = prompt('你已被降级为普通用户，请输入邀请密钥以继续使用房间：')
+                  const inviteKey = prompt('你已被降级为群外新人，请输入邀请密钥以重新加入房间：')
                   if (inviteKey) {
                     sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
                     // 触发验证流程
                     window.location.reload()
                   } else {
-                    showAlert('未输入邀请密钥，无法继续使用房间', { severity: 'error' })
+                    showAlert('未输入邀请密钥，无法使用房间', { severity: 'error' })
+                    // 跳转到主页
+                    window.location.href = '/'
                   }
                 }, 1000)
               }
@@ -814,6 +837,16 @@ export function useRoom(
                   sessionStorage.removeItem(`chitchatter_session_creator_${roomId}`)
                   localStorage.removeItem(`chitchatter_creator_${roomId}`)
                   localStorage.removeItem(`chitchatter_room_password_${roomId}`)
+                  
+                  // 从房间历史中移除
+                  ;(async () => {
+                    try {
+                      const { removeRoomFromHistory } = await import('services/RoomHistory')
+                      removeRoomFromHistory(roomId)
+                    } catch (error) {
+                      console.error('[GROUP_CLAIM] 移除房间历史失败:', error)
+                    }
+                  })()
                 }
               }
             }
