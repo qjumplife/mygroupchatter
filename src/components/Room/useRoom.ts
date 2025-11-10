@@ -713,8 +713,35 @@ export function useRoom(
           
           if (joinResponse.result === 'DENY') {
             console.log('[JOIN_RESPONSE] 验证被拒绝:', joinResponse.reason)
+            // 清除所有邀请码相关数据
             sessionStorage.removeItem(`invite_key_${roomId}`)
+            localStorage.removeItem(`chitchatter_temp_join_${roomId}`)
             showAlert(`验证失败: ${joinResponse.reason || '无效的邀请密钥'}`, { severity: 'error' })
+            // 提示用户重新输入
+            setTimeout(() => {
+              const inviteKey = prompt('验证失败，请重新输入邀请码：')
+              if (inviteKey && inviteKey.trim()) {
+                sessionStorage.setItem(`invite_key_${roomId}`, inviteKey.trim())
+                // 保存为临时请求
+                ;(async () => {
+                  const hashKi = await sha256(inviteKey.trim())
+                  const tempJoinRequest = {
+                    type: 'JOIN_REQUEST',
+                    hashKi,
+                    userId,
+                    timestamp: new Date().toISOString()
+                  }
+                  localStorage.setItem(`chitchatter_temp_join_${roomId}`, JSON.stringify(tempJoinRequest))
+                  // 如果有 peer 在线，立即发送
+                  if (peerList.length > 0) {
+                    for (const peer of peerList) {
+                      await sendJoinReq(tempJoinRequest, sendJoinRequest, peer.peerId)
+                    }
+                    localStorage.removeItem(`chitchatter_temp_join_${roomId}`)
+                  }
+                })()
+              }
+            }, 500)
             return
           }
 
@@ -1325,8 +1352,20 @@ export function useRoom(
           
           showAlert('欢迎回来！已自动登录', { severity: 'success' })
         } else {
-          // 3. 无验证信息，检查是否有邀请码
-          const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
+          // 3. 无验证信息，检查是否有邀请码（可能来自主页输入）
+          let storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
+          
+          // 如果没有，检查是否有临时请求（可能是之前保存的）
+          if (!storedInviteKey) {
+            const tempJoinRequest = localStorage.getItem(`chitchatter_temp_join_${roomId}`)
+            if (tempJoinRequest) {
+              console.log('[初始化] 检测到临时请求，等待 peer 连接')
+              // 有临时请求，不需要再提示输入
+              setIsInitializing(false)
+              return
+            }
+          }
+          
           if (!storedInviteKey) {
             // 没有邀请码，提示输入
             setTimeout(() => {
