@@ -850,17 +850,13 @@ export function useRoom(
                 // 立即停止当前组件的所有操作
                 setIsInitializing(false)
                 
-                // 直接弹出邀请码输入框
-                const inviteKey = prompt('请输入邀请码：')
+                // 提示用户并刷新页面，让用户重新进入时自然提示邀请码
+                showAlert('你的管理员权限已失效，请重新进入房间', { severity: 'warning' })
                 
-                if (inviteKey && inviteKey.trim()) {
-                  // 用户输入了邀请码，保存并刷新页面
-                  sessionStorage.setItem(`invite_key_${roomId}`, inviteKey.trim())
+                // 延迟刷新，让用户看到提示
+                setTimeout(() => {
                   window.location.reload()
-                } else {
-                  // 用户取消或未输入，退出当前房间并刷新
-                  window.location.reload()
-                }
+                }, 1500)
               }
             }
             return
