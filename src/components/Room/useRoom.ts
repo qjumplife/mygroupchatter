@@ -1122,43 +1122,20 @@ export function useRoom(
             await sendGroupClaim(groupClaim, sendGroupClaimAction, peerId)
           }
 
-          // 私有房间：新用户需要验证
+          // 私有房间：检查并发送临时验证请求
           if (isPrivate && !isRoomCreator && !contentKey) {
-            const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
-            console.log('[onPeerJoin] 检查验证:', { isPrivate, isRoomCreator, contentKey, storedInviteKey })
-            
-            if (!storedInviteKey) {
-              console.log('[onPeerJoin] 没有邀请码，弹窗输入')
-              const inviteKey = prompt('请输入邀请密钥：')
-              if (inviteKey) {
-                sessionStorage.setItem(`invite_key_${roomId}`, inviteKey)
-                const hashKi = await sha256(inviteKey)
-                const joinRequest: JoinRequest = {
-                  type: 'JOIN_REQUEST',
-                  hashKi,
-                  userId
-                }
-                
-                console.log('[onPeerJoin] 发送验证请求到新peer:', { hashKi: hashKi.substring(0, 16) + '...', userId: userId.substring(0, 8) + '...', peerId: peerId.substring(0, 8) + '...' })
+            // 检查是否有临时验证请求
+            const tempJoinRequest = localStorage.getItem(`chitchatter_temp_join_${roomId}`)
+            if (tempJoinRequest) {
+              try {
+                const joinRequest = JSON.parse(tempJoinRequest)
+                console.log('[onPeerJoin] 发送临时验证请求')
                 await sendJoinReq(joinRequest, sendJoinRequest, peerId)
-                
-                // 向所有已连接的其他peer也发送验证请求
-                for (const peer of peerList) {
-                  if (peer.peerId !== peerId) {
-                    console.log('[onPeerJoin] 发送验证请求到已有peer:', { targetPeerId: peer.peerId.substring(0, 8) + '...' })
-                    await sendJoinReq(joinRequest, sendJoinRequest, peer.peerId)
-                  }
-                }
+                // 发送成功后删除临时请求
+                localStorage.removeItem(`chitchatter_temp_join_${roomId}`)
+              } catch (error) {
+                console.error('[onPeerJoin] 发送临时请求失败:', error)
               }
-            } else {
-              const hashKi = await sha256(storedInviteKey)
-              const joinRequest: JoinRequest = {
-                type: 'JOIN_REQUEST',
-                hashKi,
-                userId
-              }
-              console.log('[onPeerJoin] 使用已存储的邀请码发送验证请求')
-              await sendJoinReq(joinRequest, sendJoinRequest, peerId)
             }
           } else {
             console.log('[onPeerJoin] 跳过验证:', { isPrivate, isRoomCreator, hasContentKey: !!contentKey })
@@ -1347,6 +1324,45 @@ export function useRoom(
           }
           
           showAlert('欢迎回来！已自动登录', { severity: 'success' })
+        } else {
+          // 3. 无验证信息，检查是否有邀请码
+          const storedInviteKey = sessionStorage.getItem(`invite_key_${roomId}`)
+          if (!storedInviteKey) {
+            // 没有邀请码，提示输入
+            setTimeout(() => {
+              const inviteKey = prompt('请输入邀请码：')
+              if (inviteKey && inviteKey.trim()) {
+                sessionStorage.setItem(`invite_key_${roomId}`, inviteKey.trim())
+                // 保存为临时验证请求，等待 peer 连接
+                ;(async () => {
+                  const hashKi = await sha256(inviteKey.trim())
+                  const tempJoinRequest = {
+                    type: 'JOIN_REQUEST',
+                    hashKi,
+                    userId,
+                    timestamp: new Date().toISOString()
+                  }
+                  localStorage.setItem(`chitchatter_temp_join_${roomId}`, JSON.stringify(tempJoinRequest))
+                  console.log('[初始化] 邀请码已保存为临时请求，等待 peer 连接')
+                })()
+              } else {
+                showAlert('需要邀请码才能加入私有房间', { severity: 'warning' })
+              }
+            }, 500)
+          } else {
+            // 有邀请码，保存为临时请求
+            ;(async () => {
+              const hashKi = await sha256(storedInviteKey)
+              const tempJoinRequest = {
+                type: 'JOIN_REQUEST',
+                hashKi,
+                userId,
+                timestamp: new Date().toISOString()
+              }
+              localStorage.setItem(`chitchatter_temp_join_${roomId}`, JSON.stringify(tempJoinRequest))
+              console.log('[初始化] 已有邀请码，保存为临时请求')
+            })()
+          }
         }
       } catch (error) {
         console.error('初始化权限系统失败:', error)
