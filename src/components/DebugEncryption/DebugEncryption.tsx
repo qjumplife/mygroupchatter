@@ -72,8 +72,11 @@ export const DebugEncryption = () => {
       
       addLog('📝 测试 9: 签名 Authority Package')
       const L = {
+        roomId: 'test-room',
         version: 1,
         timestamp: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        creatorId: 'test-creator',
         keyset: [{
           hash,
           expiration: new Date(Date.now() + 86400000).toISOString(),

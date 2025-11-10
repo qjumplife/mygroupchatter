@@ -98,7 +98,10 @@ export const InviteManagerPanel = () => {
 
   const activeCount = keys.filter(k => k.status === 'ACTIVE').length
   const usedCount = keys.filter(k => k.status === 'USED').length
-  const expiredCount = keys.filter(k => k.status === 'EXPIRED').length
+  const expiredCount = keys.filter(k => {
+    // Check if key is expired by comparing expiration date
+    return new Date(k.expiration).getTime() < Date.now()
+  }).length
 
   return (
     <div style={{ 

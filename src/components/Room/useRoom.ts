@@ -41,9 +41,9 @@ import { saveVerifiedUser, loadVerifiedUser, createGroupClaim, restoreCreatorIde
 import { encryptMessageContent, decryptMessageContent, canSendMessage } from 'services/Authority/MessageEncryption'
 import { decryptContentKeyWithKi } from 'services/Authority/Verification'
 import { signAuthorityPackage, sha256 } from 'services/Encryption'
-import { GroupClaim, JoinRequest, JoinResponse, StatusUpdateNotification, StatusUpdateAck, AdminPing, AdminPong, MessageType, InviteKeyRecord } from 'models/groupClaim'
+import { GroupClaim, StatusUpdateNotification, StatusUpdateAck, AdminPing, AdminPong } from 'models/groupClaim'
 import { sendGroupClaim, sendJoinRequest as sendJoinReq, sendJoinResponse as sendJoinResp } from 'utils/messageSender'
-import { receiveMessage, messageStats } from 'utils/messageReceiver'
+import { receiveMessage } from 'utils/messageReceiver'
 
 import { messageTranscriptSizeLimit } from 'config/messaging'
 
@@ -243,8 +243,7 @@ export function useRoom(
   const sendGroupClaimRef = useRef<((gc: GroupClaim) => void) | null>(null)
   const processedDirectMessageIds = useRef<Set<string>>(new Set())
   const [waitingForGroupClaim, setWaitingForGroupClaim] = useState(false)
-  const [competitionTimer, setCompetitionTimer] = useState<NodeJS.Timeout | null>(null)
-  const competitionStartedRef = useRef(false)
+  const [competitionTimer, setCompetitionTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
   
   useEffect(() => {
     contentKeyRef.current = contentKey
@@ -623,7 +622,7 @@ export function useRoom(
   })
 
   // P2P 验证消息
-  const [sendJoinRequest] = usePeerAction<JoinRequest>({
+  const [sendJoinRequest] = usePeerAction<Record<string, any>>({
     namespace,
     peerAction: PeerAction.JOIN_REQUEST,
     peerRoom,
@@ -702,7 +701,7 @@ export function useRoom(
     },
   })
 
-  const [sendJoinResponse] = usePeerAction<JoinResponse>({
+  const [sendJoinResponse] = usePeerAction<Record<string, any>>({
     namespace,
     peerAction: PeerAction.JOIN_RESPONSE,
     peerRoom,
@@ -788,7 +787,7 @@ export function useRoom(
   })
 
   // GroupClaim 广播和处理
-  const [sendGroupClaimAction] = usePeerAction<GroupClaim>({
+  const [sendGroupClaimAction] = usePeerAction<Record<string, any>>({
     namespace,
     peerAction: PeerAction.GROUP_CLAIM,
     peerRoom,
@@ -926,7 +925,7 @@ export function useRoom(
   })
   
   // 管理员检测和状态更新
-  const [sendStatusNotification] = usePeerAction<StatusUpdateNotification>({
+  const [sendStatusNotification] = usePeerAction<Record<string, any>>({
     namespace,
     peerAction: PeerAction.STATUS_NOTIFY,
     peerRoom,
@@ -967,7 +966,7 @@ export function useRoom(
     },
   })
   
-  const [sendStatusAck] = usePeerAction<StatusUpdateAck>({
+  const [sendStatusAck] = usePeerAction<Record<string, any>>({
     namespace,
     peerAction: PeerAction.STATUS_ACK,
     peerRoom,
@@ -978,7 +977,7 @@ export function useRoom(
     },
   })
   
-  const [sendAdminPing] = usePeerAction<AdminPing>({
+  const [sendAdminPing] = usePeerAction<Record<string, any>>({
     namespace,
     peerAction: PeerAction.ADMIN_PING,
     peerRoom,
@@ -994,7 +993,7 @@ export function useRoom(
     },
   })
   
-  const [sendAdminPong] = usePeerAction<AdminPong>({
+  const [sendAdminPong] = usePeerAction<Record<string, any>>({
     namespace,
     peerAction: PeerAction.ADMIN_PONG,
     peerRoom,
@@ -1446,7 +1445,7 @@ export function useRoom(
       console.log('[竞争] 开始 10 秒竞争期')
       setWaitingForGroupClaim(true)
       
-      const timer = setTimeout(async () => {
+      const timer: ReturnType<typeof setTimeout> = setTimeout(async () => {
         // 再次检查状态，防止在等待期间状态改变
         if (isRoomCreator || contentKey || groupClaim) {
           console.log('[竞争] 状态已改变，取消成为管理员')

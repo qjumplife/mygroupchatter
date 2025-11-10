@@ -12,6 +12,7 @@ export const DebugAuthority = () => {
   const [testResult, setTestResult] = useState<'idle' | 'running' | 'success' | 'error'>('idle')
   const [roomId] = useState(`test-room-${Date.now()}`)
   const [password] = useState('test-password-123')
+  const [userId] = useState(`test-user-${Date.now()}`)
 
   const addLog = (message: string) => {
     setLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`])
@@ -25,10 +26,11 @@ export const DebugAuthority = () => {
       addLog('🚀 开始测试房间创建...')
       addLog(`📝 房间 ID: ${roomId}`)
       addLog(`📝 密码: ${password}`)
+      addLog(`📝 用户 ID: ${userId}`)
       
       // 测试 1: 创建房间
       addLog('📝 测试 1: 创建房间并初始化权限系统')
-      const created = await createRoomAuthority(roomId, password)
+      const created = await createRoomAuthority(roomId, password, userId)
       addLog(`✅ Authority Package version: ${created.authorityPackage.version}`)
       addLog(`✅ Keyset 长度: ${created.authorityPackage.keyset.length}`)
       addLog(`✅ Content Key 类型: ${created.contentKey.type}`)
