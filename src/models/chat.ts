@@ -3,6 +3,8 @@ export interface UnsentMessage extends Record<string, any> {
   text: string
   timeSent: number
   authorId: string
+  seq?: number  // 消息序号
+  vector?: Record<string, number[]>  // 消息向量：userId -> 序号列表
 }
 
 export interface ReceivedMessage extends UnsentMessage {

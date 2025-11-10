@@ -44,6 +44,7 @@ import { signAuthorityPackage, sha256 } from 'services/Encryption'
 import { GroupClaim, StatusUpdateNotification, StatusUpdateAck, AdminPing, AdminPong } from 'models/groupClaim'
 import { sendGroupClaim, sendJoinRequest as sendJoinReq, sendJoinResponse as sendJoinResp } from 'utils/messageSender'
 import { receiveMessage } from 'utils/messageReceiver'
+import { messageSequence } from 'services/MessageSequence'
 
 import { messageTranscriptSizeLimit } from 'config/messaging'
 
@@ -359,6 +360,9 @@ export function useRoom(
         peerRoomRef.current = null
         setPeerList([])
         shellSetMessageLog([], targetPeerId)
+        
+        // 重置消息序号（离开房间时）
+        messageSequence.reset(roomId)
       }
     }
   }, [
@@ -369,6 +373,7 @@ export function useRoom(
     isDirectMessageRoom,
     shellSetMessageLog,
     targetPeerId,
+    roomId,
   ])
 
   useEffect(() => {
@@ -496,6 +501,19 @@ export function useRoom(
       return
     }
 
+    // 检查消息序号，检测丢失
+    if (message.seq && message.vector) {
+      const missing = messageSequence.detectMissing(roomId, message.authorId, message.seq)
+      if (missing.length > 0) {
+        console.warn(`[消息丢失] 用户 ${message.authorId.substring(0, 8)} 的消息 ${missing.join(', ')} 丢失`)
+        showAlert(`检测到 ${missing.length} 条消息丢失`, { severity: 'warning' })
+      }
+      
+      // 更新向量
+      messageSequence.updateVector(roomId, message.authorId, message.seq, message.vector)
+      console.log(`[接收消息] 序号: ${message.seq}, 向量: ${messageSequence.formatVector(message.vector)}`)
+    }
+
     const userSettings = settingsContext.getUserSettings()
 
     // 解密消息内容
@@ -545,7 +563,7 @@ export function useRoom(
     setMessageLog([...currentLog, newMessage])
     
     updatePeer(peerId, { isTypingGroupMessage: false })
-  }, [isDirectMessageRoom, targetPeerId, isPrivate, isShowingMessages, tabHasFocus, newMessageAudio, getDisplayUsername, updatePeer, settingsContext, timeService, shellSetMessageLog])
+  }, [isDirectMessageRoom, targetPeerId, isPrivate, isShowingMessages, tabHasFocus, newMessageAudio, getDisplayUsername, updatePeer, settingsContext, timeService, shellSetMessageLog, roomId, showAlert])
 
   const [sendPeerMessage] = usePeerAction<UnsentMessage>({
     namespace,
@@ -1087,11 +1105,17 @@ export function useRoom(
       }
     }
 
+    // 获取消息序号和向量
+    const { seq, vector } = messageSequence.getNextSequence(roomId, userId)
+    console.log(`[发送消息] 序号: ${seq}, 向量: ${messageSequence.formatVector(vector)}`)
+
     const unsentMessage: UnsentMessage = {
       authorId: userId,
       text: messageText,
       timeSent: timeService.now(),
       id: getUuid(),
+      seq,
+      vector,
     }
 
     setIsTyping(false)

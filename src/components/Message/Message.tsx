@@ -17,7 +17,7 @@ import {
   isMessageReceived,
   isInlineMedia,
 } from 'models/chat'
-import { PeerNameDisplay } from 'components/PeerNameDisplay'
+import { PeerNameDisplay, usePeerNameDisplay } from 'components/PeerNameDisplay'
 import { CopyableBlock } from 'components/CopyableBlock/CopyableBlock'
 
 import { InlineMedia } from './InlineMedia'
@@ -94,6 +94,8 @@ const isYouTubeLink = (message: IMessage) => {
 }
 
 export const Message = ({ message, showAuthor, userId }: MessageProps) => {
+  const { getDisplayUsername } = usePeerNameDisplay()
+  
   let backgroundColor: string
 
   if (message.authorId === userId) {
@@ -103,6 +105,31 @@ export const Message = ({ message, showAuthor, userId }: MessageProps) => {
   } else {
     backgroundColor = 'secondary.main'
   }
+
+  // 格式化向量信息
+  const formatVector = (vector?: Record<string, number[]>) => {
+    if (!vector || Object.keys(vector).length === 0) return ''
+    const entries = Object.entries(vector)
+      .map(([id, seqs]) => {
+        const name = getDisplayUsername(id)
+        return `${name}:${seqs.join(' ')}`
+      })
+      .join('\n')
+    return entries ? `\n${entries}` : ''
+  }
+
+  const getShortName = (name: string) => {
+    return name.substring(0, 2)
+  }
+
+  const seqLabel = 'seq' in message && message.seq 
+    ? ` ${getShortName(getDisplayUsername(message.authorId))}${message.seq}`
+    : ''
+
+  const tooltipTitle = `${Intl.DateTimeFormat(undefined, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(message.timeSent)}${seqLabel}${formatVector(message.vector)}`
 
   return (
     <Box className="Message">
@@ -121,12 +148,7 @@ export const Message = ({ message, showAuthor, userId }: MessageProps) => {
         placement={
           window.innerWidth >= spaceNeededForSideDateTooltip ? 'left' : 'top'
         }
-        title={String(
-          Intl.DateTimeFormat(undefined, {
-            dateStyle: 'short',
-            timeStyle: 'short',
-          }).format(message.timeSent)
-        )}
+        title={<span style={{ whiteSpace: 'pre-line' }}>{tooltipTitle}</span>}
       >
         <Box
           sx={{
