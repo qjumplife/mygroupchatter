@@ -13,96 +13,105 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { manifest } from './manifest'
 import { RouterType } from './src/models/router'
 
+// -----------------------------------------------------------------
+// CRITICAL FIX: Read BASE_PATH from VITE_BASE_URL env var.
+// Fallback is '/mygroupchatter/' for local/GitHub Pages.
+// -----------------------------------------------------------------
+const DEFAULT_BASE_PATH = '/mygroupchatter/'; 
+// Netlify will set VITE_BASE_URL = /
+const BASE_PATH = process.env.VITE_BASE_URL || DEFAULT_BASE_PATH;
+
 const srcPaths = [
-  'components',
-  'hooks',
-  'config',
-  'contexts',
-  'lib',
-  'models',
-  'pages',
-  'services',
-  'img',
-  'utils',
-  'test-utils',
+  'components',
+  'hooks',
+  'config',
+  'contexts',
+  'lib',
+  'models',
+  'pages',
+  'services',
+  'img',
+  'utils',
+  'test-utils',
 ]
 
 const srcPathAliases = srcPaths.reduce((acc, dir) => {
-  acc[dir] = path.resolve(__dirname, `./src/${dir}`)
-  return acc
+  acc[dir] = path.resolve(__dirname, `./src/${dir}`)
+  return acc
 }, {})
 
 const config = () => {
-  return defineConfig({
-    base: '/mygroupchatter/',
-    server: {
-      proxy: {
-        '/api': {
-          target: process.env.IS_E2E_TEST
-            ? 'http://localhost:3003'
-            : 'http://localhost:3001',
-          changeOrigin: true,
-          secure: false,
-        },
-      },
-    },
-    build: {
-      // NOTE: This isn't really working. At the very least, it's still useful
-      // for exposing source code to users.
-      // See: https://github.com/vitejs/vite/issues/15012#issuecomment-1956429165
-      sourcemap: true,
-    },
-    plugins: [
-      svgr({
-        include: '**/*.svg?react',
-      }),
-      react(),
-      macrosPlugin(),
-      nodePolyfills({
-        globals: {
-          Buffer: true,
-          global: true,
-          process: true,
-        },
-        protocolImports: true,
-      }),
-      VitePWA({
-        registerType: 'prompt',
-        devOptions: {
-          enabled: false,
-        },
-        injectRegister: 'auto',
-        filename: 'service-worker.js',
-        manifest,
-        selfDestroying: true,
-      }),
-    ],
-    resolve: {
-      alias: {
-        webtorrent: fileURLToPath(
-          new URL(
-            './node_modules/webtorrent/webtorrent.min.js',
-            import.meta.url
-          )
-        ),
-        ...srcPathAliases,
-      },
-    },
-    test: {
-      watch: false,
-      globals: true,
-      environment: 'jsdom',
-      setupFiles: './src/setupTests.ts',
-      exclude: ['**/e2e/**', '**/node_modules/**'],
-      coverage: {
-        reporter: ['text', 'html'],
-        exclude: ['node_modules/', 'src/setupTests.ts'],
-      },
-      env: {
-        VITE_ROUTER_TYPE: RouterType.BROWSER,
-      },
-    },
-  })
+  return defineConfig({
+    // Using the determined BASE_PATH
+    base: BASE_PATH, 
+    server: {
+      proxy: {
+        '/api': {
+          target: process.env.IS_E2E_TEST
+            ? 'http://localhost:3003'
+            : 'http://localhost:3001',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
+    },
+    build: {
+      // NOTE: This isn't really working. At the very least, it's still useful
+      // for exposing source code to users.
+      // See: https://github.com/vitejs/vite/issues/15012#issuecomment-1956429165
+      sourcemap: true,
+    },
+    plugins: [
+      svgr({
+        include: '**/*.svg?react',
+      }),
+      react(),
+      macrosPlugin(),
+      nodePolyfills({
+        globals: {
+          Buffer: true,
+          global: true,
+          process: true,
+        },
+        protocolImports: true,
+      }),
+      VitePWA({
+        registerType: 'prompt',
+        devOptions: {
+          enabled: false,
+        },
+        injectRegister: 'auto',
+        filename: 'service-worker.js',
+        manifest,
+        selfDestroying: true,
+      }),
+    ],
+    resolve: {
+      alias: {
+        webtorrent: fileURLToPath(
+          new URL(
+            './node_modules/webtorrent/webtorrent.min.js',
+            import.meta.url
+          )
+        ),
+        ...srcPathAliases,
+      },
+    },
+    test: {
+      watch: false,
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: './src/setupTests.ts',
+      exclude: ['**/e2e/**', '**/node_modules/**'],
+      coverage: {
+        reporter: ['text', 'html'],
+        exclude: ['node_modules/', 'src/setupTests.ts'],
+      },
+      env: {
+        VITE_ROUTER_TYPE: RouterType.BROWSER,
+      },
+    },
+  })
 }
 
 export default config
