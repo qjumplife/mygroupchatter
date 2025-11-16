@@ -59,11 +59,7 @@
     "start:e2e": "node simple-api-server.js & npm run start:tracker & cross-env VITE_IS_E2E_TEST=true VITE_RTC_CONFIG_ENDPOINT=/api/get-config VITE_TRACKER_URL=\"ws://localhost:8000\" vite --port 3000 --logLevel error",
     "dev": "mprocs \"npx cross-env VITE_TRACKER_URL=\"ws://localhost:8000\" VITE_STREAMSAVER_URL=\"http://localhost:3015/mitm.html\" npm run start\" \"npm run start:tracker\" \"npm run start:streamsaver\" \"npm run start:api\"",
     "build": "npm run build:app && npm run build:sdk",
-    
-    // Simplified: Removed VITE_HOMEPAGE shell expansion
     "build:app": "cross-env VITE_BASE_URL=$VITE_BASE_URL vite build",
-    
-    // Simplified: Removed VITE_HOMEPAGE shell expansion
     "build:sdk": "parcel build sdk/sdk.ts --no-content-hash",
     "build:sdk:watch": "nodemon --exec \"npm run build:sdk\"",
     "test": "vitest",
