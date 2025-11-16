@@ -13,6 +13,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { manifest } from './manifest'
 import { RouterType } from './src/models/router'
 
+// -----------------------------------------------------------------
+// 关键修正：根据环境变量设置公共路径 (BASE PATH)
+// 如果在 Netlify 环境中 (process.env.NETLIFY === 'true')，使用根路径 '/'
+// 否则，使用 GitHub Pages 的子目录路径 '/mygroupchatter/'
+const BASE_PATH = process.env.NETLIFY === 'true' ? '/' : '/mygroupchatter/'
+// -----------------------------------------------------------------
+
 const srcPaths = [
   'components',
   'hooks',
@@ -34,7 +41,8 @@ const srcPathAliases = srcPaths.reduce((acc, dir) => {
 
 const config = () => {
   return defineConfig({
-    base: '/',
+    // 使用条件判断后的 BASE_PATH
+    base: BASE_PATH, 
     server: {
       proxy: {
         '/api': {
