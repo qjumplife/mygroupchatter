@@ -34,7 +34,7 @@ const srcPathAliases = srcPaths.reduce((acc, dir) => {
 
 const config = () => {
   return defineConfig({
-    base: '/mygroupchatter/',
+    base: '/',
     server: {
       proxy: {
         '/api': {
