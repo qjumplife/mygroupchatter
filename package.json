@@ -60,7 +60,6 @@
     "dev": "mprocs \"npx cross-env VITE_TRACKER_URL=\"ws://localhost:8000\" VITE_STREAMSAVER_URL=\"http://localhost:3015/mitm.html\" npm run start\" \"npm run start:tracker\" \"npm run start:streamsaver\" \"npm run start:api\"",
     "build": "npm run build:app && npm run build:sdk",
     
-    // Updated build:app to support the VITE_BASE_URL env var check in vite.config.js
     "build:app": "cross-env VITE_BASE_URL=$VITE_BASE_URL VITE_HOMEPAGE=$(npm pkg get homepage) vite build",
     
     "build:sdk": "cross-env VITE_HOMEPAGE=$(npm pkg get homepage) parcel build sdk/sdk.ts --no-content-hash",
